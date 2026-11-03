@@ -63,8 +63,11 @@ assert air["src"] == "fit" and air["pm25"] == m["pm25"][0] and air["ref"]["stati
 assert build.choose_air(m, dict(obs, age_h=1.0))["src"] == "station"
 assert build.choose_air(None, obs)["src"] == "station"  # no model: show the reading with its time
 assert build.choose_air(m, None)["src"] == "model"
-assert build.suspect({"monitor": False}, {"pm25": 0.1}) and not build.suspect({"monitor": True}, {"pm25": 0.1})
-assert not build.suspect({"monitor": False}, {"pm25": 0.5})
+assert build.suspect({"monitor": False, "pm25": 0.5}, {"pm25": 0.04})        # Lagos: near zero
+assert build.suspect({"monitor": False, "pm25": 1.5}, {"pm25": 0.1})         # Sao Paulo
+assert not build.suspect({"monitor": False, "pm25": 50.2}, {"pm25": 0.19})   # Beijing: model bias
+assert not build.suspect({"monitor": True, "pm25": 0.5}, {"pm25": 0.04})     # monitors are trusted
+assert build.suspect({"monitor": False, "pm25": 400}, {"pm25": 9})
 
 # History: one row per reading time, median of the last 48 h once there are 6 rows.
 hist = {}

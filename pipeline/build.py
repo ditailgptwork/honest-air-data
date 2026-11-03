@@ -74,12 +74,17 @@ def fit_model(model, obs, ratios, steady=None, tau_h=12.0, lo=0.1, hi=10.0):
         model.setdefault("steady_f", {})[k] = round(math.exp(ls), 2)
 
 
-def suspect(obs, ratios, lo=0.2, hi=5.0):
-    """A low-cost sensor reading far from the model is more likely a fault than the air.
+def suspect(obs, ratios):
+    """A low-cost sensor reading that looks like a fault rather than the air.
 
-    Reference monitors are trusted whatever the model says."""
-    r = ratios.get("pm25")
-    return bool(obs) and not obs.get("monitor") and r is not None and not (lo <= r <= hi)
+    Faulty sensors mostly read near zero (Lagos 0.5, Sao Paulo 1.5 ug/m3 against a
+    model 10 to 25 times higher on 2026-11-03), while a plausible value far below the
+    model is often the model's own bias (Beijing 50 against 263). So: near zero and
+    well below the model, or wildly off either way. Reference monitors are trusted."""
+    r, v = ratios.get("pm25"), (obs or {}).get("pm25")
+    if not obs or obs.get("monitor") or r is None or v is None:
+        return False
+    return (v < 3 and r < 0.25) or r < 0.05 or r > 8
 
 
 def choose_air(model, obs, fresh_h=sources.FRESH_H):
