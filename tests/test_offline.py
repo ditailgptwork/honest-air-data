@@ -72,6 +72,17 @@ assert build.suspect({"monitor": False, "pm25": 400}, {"pm25": 9})
 assert build.is_airkorea("Korea Air Ministry of Environment") and build.is_airkorea("AirKorea")
 assert not build.is_airkorea("AirNow") and not build.is_airkorea(None)
 
+ak = dict(obs, provider="Korea Air Ministry of Environment", age_h=4.5)
+assert build.choose_air(m, ak)["src"] == "station"  # no-derivatives reading: shown as is, never mixed in
+assert sources.no_deriv("Korea Air Ministry of Environment") and not sources.no_deriv("AirGradient")
+pend = [({"id": "a", "cc": "KR", "lat": 36.99, "lon": 127.93}, {"pm25": [100.0, 100.0], "pm10": [200.0, 200.0]}),
+        ({"id": "far", "cc": "KR", "lat": 33.50, "lon": 126.53}, {"pm25": [100.0], "pm10": [200.0]})]
+don = [({"id": "b", "cc": "KR", "lat": 37.57, "lon": 126.98}, {"steady_f": {"pm25": 0.3}})]
+notes = []
+build.borrow_fits(pend, don, notes)
+assert pend[0][1]["pm25"] == [30.0, 30.0] and pend[0][1]["pm10"] == [60.0, 60.0] and pend[0][1]["fit_by"]["city"] == "b"
+assert pend[1][1]["pm25"] == [100.0] and "fit" not in pend[1][1] and notes and "far" in notes[0]
+
 # History: one row per reading time, median of the last 48 h once there are 6 rows.
 hist = {}
 for h in range(8):
@@ -89,6 +100,7 @@ def fake_get_json(url, params=None, headers=None, **kw):
     spec = fake_get_json.spec  # id -> (monitor, age_h, lat, pm25)
     if url.endswith("/locations"):
         return {"results": [{"id": i, "name": f"loc{i}", "isMonitor": mon,
+                             "provider": {"name": getattr(fake_get_json, "prov", {}).get(i, "X")},
                              "coordinates": {"latitude": la, "longitude": 126.98},
                              "datetimeLast": {"utc": iso(t - age * H)},
                              "sensors": [{"id": i * 10 + 1, "parameter": {"name": "pm25", "units": "µg/m³"}},
@@ -111,6 +123,10 @@ fake_get_json.spec = {1: (True, 1, 37.57, 0.0), 2: (False, 1, 37.60, 15.0)}
 assert q()["station"] == "loc2"  # loc1 reads 0, so the next station is asked
 fake_get_json.spec = {}
 assert q() is None
+fake_get_json.prov = {1: "Korea Air Ministry of Environment", 2: "AirGradient"}
+fake_get_json.spec = {1: (True, 1, 37.57, 29.0), 2: (False, 1, 37.60, 12.0)}
+r = q()
+assert r["station"] == "loc1" and r["calib"]["station"] == "loc2" and r["calib"]["provider"] == "AirGradient", r
 # CAMS refresh: nothing to do when the run is current; fetch the same run again for new cities.
 import json  # noqa: E402
 import os  # noqa: E402

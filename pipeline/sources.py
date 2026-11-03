@@ -24,6 +24,20 @@ LAST_DEBUG = {}
 FRESH_H = 3.0   # a reading this recent is shown as the value now
 CALIB_H = 6.0   # an older reading, up to this age, only corrects the model
 
+# Providers whose licence forbids changing the data. AirKorea (KOGL Type 3, 출처표시·변경금지,
+# data.go.kr 15073861) is shown exactly as published and never used to fit the model;
+# OpenAQ names it "Korea Air Ministry of Environment".
+NO_DERIV = ("airkorea", "korea air ministry of environment")
+
+
+def no_deriv(provider):
+    p = (provider or "").lower()
+    return any(k in p for k in NO_DERIV)
+
+
+def _provider(loc):
+    return (loc.get("provider") or {}).get("name")
+
 
 def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRESH_H, pause=1.1, tries=3):
     """Best nearby station with a PM2.5 reading no older than max_age_h.
@@ -58,13 +72,25 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRE
     LAST_DEBUG.update({"locations": len(results), "pm25_locations": len(ages), "usable": len(cands),
                        "monitors": sum(1 for x in cands if x[0][0] == 0),
                        "freshest_h": round(min(ages), 1) if ages else None})
+    pick = None
     for _, d, loc, sensors in cands[:tries]:
         time.sleep(pause)
         lj = get_json(f"{OPENAQ}/locations/{loc['id']}/latest", headers=headers)
-        out = _reading(lj, loc, sensors, d, now, max_age_h, fresh_h)
-        if out:
-            return out
-    return None
+        pick = _reading(lj, loc, sensors, d, now, max_age_h, fresh_h)
+        if pick:
+            break
+    if pick and no_deriv(pick.get("provider")):
+        # Shown as published; the model is fitted to another open station nearby, if any.
+        others = [x for x in cands if not no_deriv(_provider(x[2]))]
+        LAST_DEBUG["open_candidates"] = len(others)
+        for _, d, loc, sensors in others[:2]:
+            time.sleep(pause)
+            lj = get_json(f"{OPENAQ}/locations/{loc['id']}/latest", headers=headers)
+            cal = _reading(lj, loc, sensors, d, now, max_age_h, fresh_h)
+            if cal:
+                pick["calib"] = cal
+                break
+    return pick
 
 
 def _reading(lj, loc, sensors, d, now, max_age_h, fresh_h):

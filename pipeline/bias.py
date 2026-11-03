@@ -18,6 +18,7 @@ KEEP_H = 72      # rows older than this are dropped
 USE_H = 48       # rows used for the steady factor
 MIN_N = 6        # rows needed before the steady factor is trusted
 LO, HI = 0.05, 20.0
+VERSION = 2  # v2 (2026-11-04): ratios from no-derivatives providers (AirKorea) are never kept
 
 
 def load(url=URL):
@@ -26,7 +27,7 @@ def load(url=URL):
         j = get_json(url, {"t": int(time.time())}, tries=2, pause=1.0)
     except Exception:  # noqa: BLE001
         return {}
-    return j.get("cities", {}) if isinstance(j, dict) and j.get("v") == 1 else {}
+    return j.get("cities", {}) if isinstance(j, dict) and j.get("v") == VERSION else {}
 
 
 def _age_h(now, t):

@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from . import bias, cams, sources
-from .common import clean, iso, parse_iso, utcnow
+from .common import clean, haversine_km, iso, parse_iso, utcnow
 
 SITE = Path("site/v1")
 ATTR = {
@@ -94,8 +94,8 @@ def choose_air(model, obs, fresh_h=sources.FRESH_H):
     fit:     the model at this hour after fitting it to an older reading (ref).
     model:   the raw model, no usable station.
     An older reading with no model at all is still shown as measured, with its time."""
-    if obs and obs.get("age_h", 0) <= fresh_h:
-        return obs
+    if obs and (obs.get("age_h", 0) <= fresh_h or sources.no_deriv(obs.get("provider"))):
+        return obs  # a no-derivatives reading is never mixed into the model: shown as is, with its time
     if model and model.get("pm25"):
         air = {"src": "fit" if obs else "model", "pm25": model["pm25"][0],
                "pm10": (model.get("pm10") or [None])[0], "at": model["t0"]}
@@ -111,6 +111,25 @@ def is_airkorea(provider):
     return "airkorea" in p or ("korea" in p and "environment" in p)
 
 
+def borrow_fits(pending, donors, notes, max_km=200.0):
+    """Fit cities that had no open station of their own with the steady ratio of the
+    nearest fitted city in the same country, within max_km. pending and donors are
+    lists of (city, model)."""
+    for c, m in pending:
+        near = [(haversine_km(c["lat"], c["lon"], d["lat"], d["lon"]), d, dm)
+                for d, dm in donors if d["cc"] == c["cc"] and d["id"] != c["id"]]
+        km, d, dm = min(near, key=lambda x: x[0]) if near else (None, None, None)
+        if km is None or km > max_km:
+            notes.append(f"no open sensor near {c['id']}: forecast left as the raw model")
+            continue
+        f = dm.get("steady_f") or {}
+        for k in ("pm25", "pm10"):
+            fk = f.get(k) or f.get("pm25")
+            if m.get(k) and fk:
+                m[k] = [round(x * fk, 1) for x in m[k]]
+        m.update(fit=True, steady_f=dict(f), fit_by={"city": d["id"], "km": round(km)})
+
+
 def write(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -123,6 +142,7 @@ def main():
     cache, cams_updated = cams.refresh(cities, now, log=print)
     hist = bias.load()
     down = {}  # weather service -> failures in a row during this run
+    donors, pending = [], []  # (city, model) fitted to an open station / waiting to borrow a fit
     oa_key = os.environ.get("OPENAQ_API_KEY")
     kr_key = os.environ.get("DATA_GO_KR_KEY")
     by_cc = {}
@@ -138,15 +158,25 @@ def main():
             except Exception as e:  # noqa: BLE001
                 errors.append(f"openaq {c['id']}: {clean(e)}")
             time.sleep(1.1)
+        calib = obs.pop("calib", None) if obs else None
         if model and obs:
-            ratios = ratios_at_reading(model, obs, cache, c["id"])
-            if suspect(obs, ratios):
-                notes.append(f"suspect sensor {c['id']}: {obs.get('station')} pm25 {obs.get('pm25')}, "
-                             f"{round(ratios['pm25'], 2)} x model")
-                obs = None
+            # The model is fitted to the shown reading, or, when that one may not be
+            # changed (AirKorea), to another open station nearby.
+            src = calib if sources.no_deriv(obs.get("provider")) else obs
+            if src:
+                ratios = ratios_at_reading(model, src, cache, c["id"])
+                if suspect(src, ratios):
+                    notes.append(f"suspect sensor {c['id']}: {src.get('station')} pm25 {src.get('pm25')}, "
+                                 f"{round(ratios['pm25'], 2)} x model")
+                    if src is obs:
+                        obs = None
+                else:
+                    bias.add(hist, c["id"], src["at"], ratios, now)
+                    fit_model(model, src, ratios, bias.steady(hist, c["id"], now))
+                    model["fit_by"] = {k: src.get(k) for k in ("station", "provider", "dist_km")}
+                    donors.append((c, model))
             else:
-                bias.add(hist, c["id"], obs["at"], ratios, now)
-                fit_model(model, obs, ratios, bias.steady(hist, c["id"], now))
+                pending.append((c, model))
         air = choose_air(model, obs)
         if air and air.get("src") == "fit":
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
@@ -175,6 +205,7 @@ def main():
         rec.update(air=air, model=model, wx=wx)
         by_cc.setdefault(c["cc"], []).append(rec)
 
+    borrow_fits(pending, donors, notes)
     ok_air = sum(1 for recs in by_cc.values() for r in recs if r["air"])
     ok_wx = sum(1 for recs in by_cc.values() for r in recs if r["wx"])
     if ok_air == 0 and ok_wx == 0:
@@ -201,7 +232,7 @@ def main():
     write(SITE / "index.json", {
         "v": 1, "generated": iso(now), "countries": sorted(by_cc),
         "cities": [{k: c[k] for k in ("id", "name", "cc", "lat", "lon")} for c in cities]})
-    write(SITE / "bias.json", {"v": 1, "generated": iso(now), "keep_h": bias.KEEP_H,
+    write(SITE / "bias.json", {"v": bias.VERSION, "generated": iso(now), "keep_h": bias.KEEP_H,
                                "cities": bias.prune(hist, now)})
     try:
         write(SITE / "quakes.json", {"v": 1, "generated": iso(now), "attr": [ATTR["usgs"]],
@@ -210,8 +241,10 @@ def main():
         errors.append(f"usgs: {clean(e)}")
     srcs = [r["air"]["src"] for recs in by_cc.values() for r in recs if r["air"]]
     n_station, n_fit = srcs.count("station"), srcs.count("fit")
-    fits = {r["id"]: {"now": r["model"]["fit_f"].get("pm25"), "steady": r["model"]["steady_f"].get("pm25")}
-            for recs in by_cc.values() for r in recs if r["model"] and r["model"].get("fit_f")}
+    fits = {r["id"]: {"now": (r["model"].get("fit_f") or {}).get("pm25"),
+                      "steady": (r["model"].get("steady_f") or {}).get("pm25"),
+                      "by": (r["model"].get("fit_by") or {}).get("city") or (r["model"].get("fit_by") or {}).get("provider")}
+            for recs in by_cc.values() for r in recs if r["model"] and r["model"].get("fit")}
     write(SITE / "status.json", {"v": 1, "generated": iso(now), "cams_base": (cache or {}).get("base"),
                                  "cities": len(cities), "air": ok_air, "station": n_station, "fit": n_fit,
                                  "weather": ok_wx, "fit_f": fits, "errors": errors[:40], "notes": notes[:60]})
