@@ -18,6 +18,240 @@
   "wx": "kma"
  },
  {
+  "id": "incheon",
+  "name": "Incheon",
+  "lat": 37.46,
+  "lon": 126.71,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "daegu",
+  "name": "Daegu",
+  "lat": 35.87,
+  "lon": 128.6,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "daejeon",
+  "name": "Daejeon",
+  "lat": 36.35,
+  "lon": 127.38,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "gwangju",
+  "name": "Gwangju",
+  "lat": 35.16,
+  "lon": 126.85,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "ulsan",
+  "name": "Ulsan",
+  "lat": 35.54,
+  "lon": 129.31,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "sejong",
+  "name": "Sejong",
+  "lat": 36.48,
+  "lon": 127.29,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "suwon",
+  "name": "Suwon",
+  "lat": 37.26,
+  "lon": 127.03,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "seongnam",
+  "name": "Seongnam",
+  "lat": 37.42,
+  "lon": 127.13,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "goyang",
+  "name": "Goyang",
+  "lat": 37.66,
+  "lon": 126.83,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "uijeongbu",
+  "name": "Uijeongbu",
+  "lat": 37.74,
+  "lon": 127.03,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "pyeongtaek",
+  "name": "Pyeongtaek",
+  "lat": 36.99,
+  "lon": 127.11,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "cheongju",
+  "name": "Cheongju",
+  "lat": 36.64,
+  "lon": 127.49,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "chungju",
+  "name": "Chungju",
+  "lat": 36.99,
+  "lon": 127.93,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "cheonan",
+  "name": "Cheonan",
+  "lat": 36.82,
+  "lon": 127.11,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "jeonju",
+  "name": "Jeonju",
+  "lat": 35.82,
+  "lon": 127.15,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "gunsan",
+  "name": "Gunsan",
+  "lat": 35.97,
+  "lon": 126.74,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "changwon",
+  "name": "Changwon",
+  "lat": 35.23,
+  "lon": 128.68,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "jinju",
+  "name": "Jinju",
+  "lat": 35.18,
+  "lon": 128.11,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "pohang",
+  "name": "Pohang",
+  "lat": 36.02,
+  "lon": 129.34,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "andong",
+  "name": "Andong",
+  "lat": 36.57,
+  "lon": 128.73,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "chuncheon",
+  "name": "Chuncheon",
+  "lat": 37.88,
+  "lon": 127.73,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "wonju",
+  "name": "Wonju",
+  "lat": 37.34,
+  "lon": 127.92,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "gangneung",
+  "name": "Gangneung",
+  "lat": 37.75,
+  "lon": 128.88,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "mokpo",
+  "name": "Mokpo",
+  "lat": 34.81,
+  "lon": 126.39,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "yeosu",
+  "name": "Yeosu",
+  "lat": 34.76,
+  "lon": 127.66,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "jeju",
+  "name": "Jeju",
+  "lat": 33.5,
+  "lon": 126.53,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
   "id": "tokyo",
   "name": "Tokyo",
   "lat": 35.68,

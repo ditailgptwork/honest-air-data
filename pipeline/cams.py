@@ -94,16 +94,22 @@ def refresh(cities, now, workdir=Path("cache"), log=print):
     """Return (cache, updated). Never raises: errors are logged and the old cache is kept."""
     cache = load_cache()
     want = expected_base(now)
-    if cache and parse_iso(cache["base"]) >= want:
-        return cache, False
+    have = parse_iso(cache["base"]) if cache else None
+    missing = [c["id"] for c in cities if c["id"] not in (cache or {}).get("cities", {})]
+    bases = [want, want - dt.timedelta(hours=12)]
+    if have and have >= want:
+        if not missing:
+            return cache, False
+        bases = [have]  # same run again, only to add cities that are new in cities.json
+        log(f"CAMS: {len(missing)} cities not in the cache, fetching run {iso(have)} again")
     if not os.environ.get("ADS_API_KEY"):
         log("CAMS: no key, using cache")
         return cache, False
     workdir.mkdir(parents=True, exist_ok=True)
     grib = workdir / "cams.grib"
-    for base in (want, want - dt.timedelta(hours=12)):
-        if cache and parse_iso(cache["base"]) >= base:
-            break
+    for base in bases:
+        if have and (have > base or (have == base and not missing)):
+            break  # never step back to an older run
         for step in (1, 3):
             try:
                 fetch_grib(base, grib, step=step)

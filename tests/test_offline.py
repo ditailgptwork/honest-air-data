@@ -108,4 +108,22 @@ fake_get_json.spec = {1: (True, 1, 37.57, 0.0), 2: (False, 1, 37.60, 15.0)}
 assert q()["station"] == "loc2"  # loc1 reads 0, so the next station is asked
 fake_get_json.spec = {}
 assert q() is None
+# CAMS refresh: nothing to do when the run is current; fetch the same run again for new cities.
+import json  # noqa: E402
+import os  # noqa: E402
+import tempfile  # noqa: E402
+
+tmp = Path(tempfile.mkdtemp())
+cams.CACHE = tmp / "cams.json"
+cams.CACHE.write_text(json.dumps(dict(flat, base=iso(base))), encoding="utf-8")
+calls = []
+cams.fetch_grib = lambda b, out, step=1, timeout=1800: (calls.append(iso(b)), Path(out).write_text("g"))
+cams.open_grib = lambda path: ds
+os.environ.setdefault("ADS_API_KEY", "offline-test-key")
+late = base + 11 * H  # 23 UTC: the 12 UTC run is the one to have
+one = [{"id": "x", "lat": 37.57, "lon": 126.98}]
+c1, upd = cams.refresh(one, late, workdir=tmp, log=lambda *a: None)
+assert not upd and calls == []
+c2, upd = cams.refresh(one + [{"id": "seoul", "lat": 37.57, "lon": 126.98}], late, workdir=tmp, log=lambda *a: None)
+assert upd and calls == [iso(base)] and "seoul" in c2["cities"] and c2["base"] == iso(base), (calls, c2.get("base"))
 print("offline tests ok")
