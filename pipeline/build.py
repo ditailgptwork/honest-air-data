@@ -9,6 +9,7 @@ The app downloads one country file and picks the nearest city on the phone,
 so no coordinates ever reach this server.
 """
 import json
+import math
 import os
 import sys
 import time
@@ -27,6 +28,28 @@ ATTR = {
     "JMA": "出典：気象庁ホームページ",
     "usgs": "U.S. Geological Survey",
 }
+
+
+def fit_model(model, air, tau_h=12.0):
+    """Scale the model series to the measured value now, fading back to the raw model.
+
+    CAMS can be several times off at a single point (Seoul, 2026-11-03: model 101 vs
+    station 29 ug/m3). The factor at hour h is 1 + (f0 - 1) * exp(-h / tau)."""
+    f25 = None
+    for k in ("pm25", "pm10"):
+        series = model.get(k) or []
+        m0, v = (series[0] if series else None), air.get(k)
+        f0 = None
+        if m0 and m0 > 0 and v is not None:
+            f0 = max(0.2, min(5.0, v / m0))
+        elif k == "pm10" and f25 is not None:
+            f0 = f25
+        if f0 is None:
+            continue
+        if k == "pm25":
+            f25 = f0
+        model[k] = [round(x * (1 + (f0 - 1) * math.exp(-h / tau_h)), 1) for h, x in enumerate(series)]
+        model["fit"] = True
 
 
 def write(path, obj):
@@ -52,6 +75,8 @@ def main():
             except Exception as e:  # noqa: BLE001
                 errors.append(f"openaq {c['id']}: {clean(e)}")
             time.sleep(1.1)
+        if model and air and air.get("src") == "station":
+            fit_model(model, air)
         if air is None and model and model.get("pm25"):
             air = {"src": "model", "pm25": model["pm25"][0], "pm10": model["pm10"][0], "at": model["t0"]}
         wx = None
