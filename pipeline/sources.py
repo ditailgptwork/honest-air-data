@@ -20,23 +20,34 @@ WANT = ("pm25", "pm10", "o3", "no2")
 SANE_MAX = {"pm25": 1500.0, "pm10": 3000.0, "o3": 1500.0, "no2": 1500.0}
 
 
+LAST_DEBUG = {}
+
+
 def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=3.0, pause=1.1):
     headers = {"X-API-Key": key}
     j = get_json(f"{OPENAQ}/locations",
-                 {"coordinates": f"{lat:.4f},{lon:.4f}", "radius": radius_m, "limit": 25}, headers=headers)
+                 {"coordinates": f"{lat:.4f},{lon:.4f}", "radius": radius_m, "limit": 100}, headers=headers)
     now = utcnow()
     best = None
-    for loc in j.get("results", []):
+    ages = []
+    results = j.get("results", [])
+    for loc in results:
         sensors = {s["id"]: s.get("parameter") or {} for s in loc.get("sensors", [])}
         if not any(p.get("name") == "pm25" for p in sensors.values()):
             continue
         last = (loc.get("datetimeLast") or {}).get("utc")
-        if not last or (now - parse_iso(last)).total_seconds() / 3600 > max_age_h:
+        age = None if not last else (now - parse_iso(last)).total_seconds() / 3600
+        if age is not None:
+            ages.append(age)
+        if age is None or age > max_age_h:
             continue
         c = loc.get("coordinates") or {}
         d = haversine_km(lat, lon, c.get("latitude", lat), c.get("longitude", lon))
         if best is None or d < best[0]:
             best = (d, loc, sensors)
+    LAST_DEBUG.clear()
+    LAST_DEBUG.update({"locations": len(results), "pm25_locations": len(ages),
+                       "freshest_h": round(min(ages), 1) if ages else None})
     if best is None:
         return None
     d, loc, sensors = best

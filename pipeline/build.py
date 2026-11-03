@@ -75,6 +75,8 @@ def main():
             except Exception as e:  # noqa: BLE001
                 errors.append(f"openaq {c['id']}: {clean(e)}")
             time.sleep(1.1)
+        if oa_key and air is None:
+            errors.append(f"no fresh station {c['id']}: {dict(sources.LAST_DEBUG)}")
         if model and air and air.get("src") == "station":
             fit_model(model, air)
         if air is None and model and model.get("pm25"):
