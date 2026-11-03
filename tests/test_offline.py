@@ -69,6 +69,9 @@ assert not build.suspect({"monitor": False, "pm25": 50.2}, {"pm25": 0.19})   # B
 assert not build.suspect({"monitor": True, "pm25": 0.5}, {"pm25": 0.04})     # monitors are trusted
 assert build.suspect({"monitor": False, "pm25": 400}, {"pm25": 9})
 
+assert build.is_airkorea("Korea Air Ministry of Environment") and build.is_airkorea("AirKorea")
+assert not build.is_airkorea("AirNow") and not build.is_airkorea(None)
+
 # History: one row per reading time, median of the last 48 h once there are 6 rows.
 hist = {}
 for h in range(8):

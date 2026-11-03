@@ -105,6 +105,12 @@ def choose_air(model, obs, fresh_h=sources.FRESH_H):
     return obs
 
 
+def is_airkorea(provider):
+    """OpenAQ names AirKorea data 'Korea Air Ministry of Environment' (seen 2026-11-03)."""
+    p = (provider or "").lower()
+    return "airkorea" in p or ("korea" in p and "environment" in p)
+
+
 def write(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -186,7 +192,7 @@ def main():
             st = a if a.get("src") == "station" else a.get("ref")
             if st:
                 used.add("openaq")
-                if (st.get("provider") or "").lower().startswith("airkorea"):
+                if is_airkorea(st.get("provider")):
                     used.add("airkorea")
             if r["wx"]:
                 used.add(r["wx"]["src"])
