@@ -25,17 +25,19 @@ FRESH_H = 3.0   # a reading this recent is shown as the value now
 CALIB_H = 6.0   # an older reading, up to this age, only corrects the model
 
 
-def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRESH_H, pause=1.1):
-    """Nearest station with a PM2.5 reading no older than max_age_h.
+def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRESH_H, pause=1.1, tries=3):
+    """Best nearby station with a PM2.5 reading no older than max_age_h.
 
-    A station read within fresh_h wins over a closer one with an older reading.
-    The result carries age_h (hours since the PM2.5 reading) so the caller decides
-    whether to show it as the value now or use it only to correct the model."""
+    Order: reference monitors before low-cost sensors, a reading within fresh_h
+    before an older one, then distance. Up to `tries` stations are asked for their
+    latest values; the first with a usable PM2.5 wins. The result carries age_h
+    (hours since the PM2.5 reading) so the caller decides whether to show it as
+    the value now or use it only to correct the model."""
     headers = {"X-API-Key": key}
     j = get_json(f"{OPENAQ}/locations",
                  {"coordinates": f"{lat:.4f},{lon:.4f}", "radius": radius_m, "limit": 100}, headers=headers)
     now = utcnow()
-    best = None
+    cands = []
     ages = []
     results = j.get("results", [])
     for loc in results:
@@ -50,17 +52,22 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRE
             continue
         c = loc.get("coordinates") or {}
         d = haversine_km(lat, lon, c.get("latitude", lat), c.get("longitude", lon))
-        rank = (0 if age <= fresh_h else 1, d)
-        if best is None or rank < best[0]:
-            best = (rank, d, loc, sensors)
+        cands.append(((0 if loc.get("isMonitor") else 1, 0 if age <= fresh_h else 1, d), d, loc, sensors))
+    cands.sort(key=lambda x: x[0])
     LAST_DEBUG.clear()
-    LAST_DEBUG.update({"locations": len(results), "pm25_locations": len(ages),
+    LAST_DEBUG.update({"locations": len(results), "pm25_locations": len(ages), "usable": len(cands),
+                       "monitors": sum(1 for x in cands if x[0][0] == 0),
                        "freshest_h": round(min(ages), 1) if ages else None})
-    if best is None:
-        return None
-    _, d, loc, sensors = best
-    time.sleep(pause)
-    lj = get_json(f"{OPENAQ}/locations/{loc['id']}/latest", headers=headers)
+    for _, d, loc, sensors in cands[:tries]:
+        time.sleep(pause)
+        lj = get_json(f"{OPENAQ}/locations/{loc['id']}/latest", headers=headers)
+        out = _reading(lj, loc, sensors, d, now, max_age_h, fresh_h)
+        if out:
+            return out
+    return None
+
+
+def _reading(lj, loc, sensors, d, now, max_age_h, fresh_h):
     vals = {}
     for r in lj.get("results", []):
         p = sensors.get(r.get("sensorsId")) or {}
@@ -69,7 +76,8 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRE
             continue
         v = r.get("value")
         t = (r.get("datetime") or {}).get("utc")
-        if v is None or v < 0 or not t:
+        # A PM reading of exactly 0 is a sensor fault in practice; gases can be 0.
+        if v is None or v < 0 or (v == 0 and name in ("pm25", "pm10")) or not t:
             continue
         age = (now - parse_iso(t)).total_seconds() / 3600
         if age > max_age_h:
@@ -88,7 +96,8 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRE
     _, t25, a25 = vals["pm25"]
     limit = fresh_h if a25 <= fresh_h else max_age_h
     out = {"src": "station", "station": loc.get("name"), "dist_km": round(d, 1),
-           "provider": (loc.get("provider") or {}).get("name"), "at": t25, "age_h": round(max(a25, 0.0), 2)}
+           "provider": (loc.get("provider") or {}).get("name"), "monitor": bool(loc.get("isMonitor")),
+           "at": t25, "age_h": round(max(a25, 0.0), 2)}
     for name, (v, _, age) in vals.items():
         if age <= limit:
             out[name] = v

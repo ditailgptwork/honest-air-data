@@ -15,7 +15,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import cams, sources
+from . import bias, cams, sources
 from .common import clean, iso, parse_iso, utcnow
 
 SITE = Path("site/v1")
@@ -30,37 +30,56 @@ ATTR = {
 }
 
 
-def fit_model(model, obs, cache=None, city_id=None, tau_h=12.0):
-    """Scale the model series to a measured value, fading back to the raw model.
+def ratios_at_reading(model, obs, cache, city_id):
+    """Reading / raw model at the time of the reading, per pollutant (call before fitting)."""
+    t_obs = parse_iso(obs["at"]) if obs.get("at") else parse_iso(model["t0"])
+    out = {}
+    for k in ("pm25", "pm10"):
+        series = model.get(k) or []
+        m = cams.value_at(cache, city_id, k, t_obs) if cache else None
+        if m is None and series:
+            m = series[0]
+        v = obs.get(k)
+        if m and m > 0 and v is not None and v > 0:
+            out[k] = v / m
+    return out
+
+
+def fit_model(model, obs, ratios, steady=None, tau_h=12.0, lo=0.1, hi=10.0):
+    """Scale the model series to a measured value.
 
     CAMS can be several times off at a single point (Seoul, 2026-11-03: model 101 vs
-    station 29 ug/m3). The factor f0 compares the reading with the model at the time
-    of the reading, and it fades from that time: 1 + (f0 - 1) * exp(-lag / tau),
-    where lag is the hours between the reading and each forecast hour."""
+    station 29 ug/m3), and much of that is steady. In log space the factor moves from
+    the reading's ratio r0 toward the steady ratio rs: log f = log rs + (log r0 - log rs)
+    * exp(-lag / tau), where lag is the hours between the reading and each forecast hour.
+    rs is the median ratio of the last 48 h (bias.py); without enough history half of
+    the log ratio is assumed steady."""
     t0 = parse_iso(model["t0"])
     t_obs = parse_iso(obs["at"]) if obs.get("at") else t0
     lag0 = max(0.0, (t0 - t_obs).total_seconds() / 3600)
-    f25 = None
+    steady = steady or {}
+    clamp = lambda x: min(hi, max(lo, x))  # noqa: E731
     for k in ("pm25", "pm10"):
         series = model.get(k) or []
-        if not series:
+        r0 = ratios.get(k) or (ratios.get("pm25") if k == "pm10" else None)
+        if not series or not r0:
             continue
-        m_obs = cams.value_at(cache, city_id, k, t_obs) if cache else None
-        if m_obs is None:
-            m_obs = series[0]
-        v = obs.get(k)
-        f0 = None
-        if m_obs and m_obs > 0 and v is not None:
-            f0 = max(0.2, min(5.0, v / m_obs))
-        elif k == "pm10" and f25 is not None:
-            f0 = f25
-        if f0 is None:
-            continue
-        if k == "pm25":
-            f25 = f0
-        model[k] = [round(x * (1 + (f0 - 1) * math.exp(-(lag0 + h) / tau_h)), 1) for h, x in enumerate(series)]
+        l0 = math.log(clamp(r0))
+        rs = steady.get(k) or (steady.get("pm25") if k == "pm10" else None)
+        ls = math.log(clamp(rs)) if rs else 0.5 * l0
+        model[k] = [round(x * math.exp(ls + (l0 - ls) * math.exp(-(lag0 + h) / tau_h)), 1)
+                    for h, x in enumerate(series)]
         model["fit"] = True
-        model.setdefault("fit_f", {})[k] = round(f0, 2)
+        model.setdefault("fit_f", {})[k] = round(math.exp(l0), 2)
+        model.setdefault("steady_f", {})[k] = round(math.exp(ls), 2)
+
+
+def suspect(obs, ratios, lo=0.2, hi=5.0):
+    """A low-cost sensor reading far from the model is more likely a fault than the air.
+
+    Reference monitors are trusted whatever the model says."""
+    r = ratios.get("pm25")
+    return bool(obs) and not obs.get("monitor") and r is not None and not (lo <= r <= hi)
 
 
 def choose_air(model, obs, fresh_h=sources.FRESH_H):
@@ -91,6 +110,7 @@ def main():
     cities = json.loads(Path("cities.json").read_text(encoding="utf-8"))
     errors, notes = [], []
     cache, cams_updated = cams.refresh(cities, now, log=print)
+    hist = bias.load()
     oa_key = os.environ.get("OPENAQ_API_KEY")
     kr_key = os.environ.get("DATA_GO_KR_KEY")
     by_cc = {}
@@ -107,21 +127,31 @@ def main():
                 errors.append(f"openaq {c['id']}: {clean(e)}")
             time.sleep(1.1)
         if model and obs:
-            fit_model(model, obs, cache, c["id"])
+            ratios = ratios_at_reading(model, obs, cache, c["id"])
+            if suspect(obs, ratios):
+                notes.append(f"suspect sensor {c['id']}: {obs.get('station')} pm25 {obs.get('pm25')}, "
+                             f"{round(ratios['pm25'], 2)} x model")
+                obs = None
+            else:
+                bias.add(hist, c["id"], obs["at"], ratios, now)
+                fit_model(model, obs, ratios, bias.steady(hist, c["id"], now))
         air = choose_air(model, obs)
         if air and air.get("src") == "fit":
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
         wx = None
         try:
-            if c["wx"] == "kma":
-                wx = sources.kma_weather(c["lat"], c["lon"], kr_key) if kr_key else None
+            if c["wx"] == "kma" and kr_key:
+                wx = sources.kma_weather(c["lat"], c["lon"], kr_key)
             elif c["wx"] == "jma":
                 wx = sources.jma_weather(**c["jma"])
-            else:
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"wx {c['id']} {c['wx']} failed, MET Norway instead: {clean(e)[:120]}")
+        if wx is None:
+            try:
                 wx = sources.metno_weather(c["lat"], c["lon"])
                 time.sleep(0.2)
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"wx {c['id']}: {clean(e)}")
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"wx {c['id']}: {clean(e)}")
         if wx is not None:
             uv = (model or {}).get("uv") or []
             wx["uvmax"] = max(uv) if uv else wx.get("uvmax_clear")
@@ -154,6 +184,8 @@ def main():
     write(SITE / "index.json", {
         "v": 1, "generated": iso(now), "countries": sorted(by_cc),
         "cities": [{k: c[k] for k in ("id", "name", "cc", "lat", "lon")} for c in cities]})
+    write(SITE / "bias.json", {"v": 1, "generated": iso(now), "keep_h": bias.KEEP_H,
+                               "cities": bias.prune(hist, now)})
     try:
         write(SITE / "quakes.json", {"v": 1, "generated": iso(now), "attr": [ATTR["usgs"]],
                                      "quakes": sources.usgs_quakes()[:60]})
@@ -161,8 +193,8 @@ def main():
         errors.append(f"usgs: {clean(e)}")
     srcs = [r["air"]["src"] for recs in by_cc.values() for r in recs if r["air"]]
     n_station, n_fit = srcs.count("station"), srcs.count("fit")
-    fits = {r["id"]: r["model"].get("fit_f") for recs in by_cc.values() for r in recs
-            if r["model"] and r["model"].get("fit_f")}
+    fits = {r["id"]: {"now": r["model"]["fit_f"].get("pm25"), "steady": r["model"]["steady_f"].get("pm25")}
+            for recs in by_cc.values() for r in recs if r["model"] and r["model"].get("fit_f")}
     write(SITE / "status.json", {"v": 1, "generated": iso(now), "cams_base": (cache or {}).get("base"),
                                  "cities": len(cities), "air": ok_air, "station": n_station, "fit": n_fit,
                                  "weather": ok_wx, "fit_f": fits, "errors": errors[:40], "notes": notes[:60]})
