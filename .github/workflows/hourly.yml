@@ -38,7 +38,7 @@ jobs:
           key: cams-${{ github.run_id }}
           restore-keys: cams-
       - id: build
-        run: python -m pipeline.build
+        run: python -u -m pipeline.build
         env:
           ADS_API_KEY: ${{ secrets.ADS_API_KEY }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}

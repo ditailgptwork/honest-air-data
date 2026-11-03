@@ -142,6 +142,7 @@ def metno_weather(lat, lon):
 
 # ---------------------------------------------------------------- KMA (Korea)
 KMA = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0"
+KMA_TIMEOUT = (6, 20)  # data.go.kr is sometimes unreachable from abroad: fail fast, fall back to MET Norway
 
 
 def kma_grid(lat, lon):
@@ -177,7 +178,8 @@ def kma_weather(lat, lon, key):
     b = kst - dt.timedelta(minutes=45)
     now_items = _kma_items(get_json(f"{KMA}/getUltraSrtNcst", {
         "serviceKey": key, "pageNo": 1, "numOfRows": 30, "dataType": "JSON",
-        "base_date": b.strftime("%Y%m%d"), "base_time": b.strftime("%H00"), "nx": nx, "ny": ny}))
+        "base_date": b.strftime("%Y%m%d"), "base_time": b.strftime("%H00"), "nx": nx, "ny": ny},
+        timeout=KMA_TIMEOUT, tries=2))
     cur = {i["category"]: i["obsrValue"] for i in now_items}
     b2 = kst - dt.timedelta(minutes=15)
     hours = [h for h in (2, 5, 8, 11, 14, 17, 20, 23) if h <= b2.hour]
@@ -187,7 +189,8 @@ def kma_weather(lat, lon, key):
         bd, bt = (b2 - dt.timedelta(days=1)).strftime("%Y%m%d"), "2300"
     fc_items = _kma_items(get_json(f"{KMA}/getVilageFcst", {
         "serviceKey": key, "pageNo": 1, "numOfRows": 1000, "dataType": "JSON",
-        "base_date": bd, "base_time": bt, "nx": nx, "ny": ny}))
+        "base_date": bd, "base_time": bt, "nx": nx, "ny": ny},
+        timeout=KMA_TIMEOUT, tries=2))
     fc = {}
     for i in fc_items:
         fc.setdefault(i["fcstDate"] + i["fcstTime"], {})[i["category"]] = i["fcstValue"]

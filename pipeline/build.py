@@ -116,6 +116,7 @@ def main():
     errors, notes = [], []
     cache, cams_updated = cams.refresh(cities, now, log=print)
     hist = bias.load()
+    down = {}  # weather service -> failures in a row during this run
     oa_key = os.environ.get("OPENAQ_API_KEY")
     kr_key = os.environ.get("DATA_GO_KR_KEY")
     by_cc = {}
@@ -145,11 +146,16 @@ def main():
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
         wx = None
         try:
-            if c["wx"] == "kma" and kr_key:
+            if c["wx"] == "kma" and kr_key and down.get("kma", 0) < 2:
                 wx = sources.kma_weather(c["lat"], c["lon"], kr_key)
-            elif c["wx"] == "jma":
+                down["kma"] = 0
+            elif c["wx"] == "jma" and down.get("jma", 0) < 2:
                 wx = sources.jma_weather(**c["jma"])
+                down["jma"] = 0
         except Exception as e:  # noqa: BLE001
+            # Two failures in a row: the service is down for this run, so the other
+            # cities go straight to MET Norway instead of waiting on timeouts.
+            down[c["wx"]] = down.get(c["wx"], 0) + 1
             notes.append(f"wx {c['id']} {c['wx']} failed, MET Norway instead: {clean(e)[:120]}")
         if wx is None:
             try:
