@@ -1,0 +1,480 @@
+[
+ {
+  "id": "seoul",
+  "name": "Seoul",
+  "lat": 37.57,
+  "lon": 126.98,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "busan",
+  "name": "Busan",
+  "lat": 35.18,
+  "lon": 129.08,
+  "cc": "KR",
+  "tz": "Asia/Seoul",
+  "wx": "kma"
+ },
+ {
+  "id": "tokyo",
+  "name": "Tokyo",
+  "lat": 35.68,
+  "lon": 139.69,
+  "cc": "JP",
+  "tz": "Asia/Tokyo",
+  "wx": "jma",
+  "jma": {
+   "office": "130000",
+   "temp_area": "44132",
+   "amedas": "44132"
+  }
+ },
+ {
+  "id": "osaka",
+  "name": "Osaka",
+  "lat": 34.69,
+  "lon": 135.5,
+  "cc": "JP",
+  "tz": "Asia/Tokyo",
+  "wx": "jma",
+  "jma": {
+   "office": "270000",
+   "temp_area": "62078",
+   "amedas": "62078"
+  }
+ },
+ {
+  "id": "beijing",
+  "name": "Beijing",
+  "lat": 39.9,
+  "lon": 116.41,
+  "cc": "CN",
+  "tz": "Asia/Shanghai",
+  "wx": "metno"
+ },
+ {
+  "id": "shanghai",
+  "name": "Shanghai",
+  "lat": 31.23,
+  "lon": 121.47,
+  "cc": "CN",
+  "tz": "Asia/Shanghai",
+  "wx": "metno"
+ },
+ {
+  "id": "hong-kong",
+  "name": "Hong Kong",
+  "lat": 22.32,
+  "lon": 114.17,
+  "cc": "HK",
+  "tz": "Asia/Hong_Kong",
+  "wx": "metno"
+ },
+ {
+  "id": "taipei",
+  "name": "Taipei",
+  "lat": 25.03,
+  "lon": 121.57,
+  "cc": "TW",
+  "tz": "Asia/Taipei",
+  "wx": "metno"
+ },
+ {
+  "id": "bangkok",
+  "name": "Bangkok",
+  "lat": 13.75,
+  "lon": 100.5,
+  "cc": "TH",
+  "tz": "Asia/Bangkok",
+  "wx": "metno"
+ },
+ {
+  "id": "chiang-mai",
+  "name": "Chiang Mai",
+  "lat": 18.79,
+  "lon": 98.98,
+  "cc": "TH",
+  "tz": "Asia/Bangkok",
+  "wx": "metno"
+ },
+ {
+  "id": "hanoi",
+  "name": "Hanoi",
+  "lat": 21.03,
+  "lon": 105.85,
+  "cc": "VN",
+  "tz": "Asia/Ho_Chi_Minh",
+  "wx": "metno"
+ },
+ {
+  "id": "ho-chi-minh-city",
+  "name": "Ho Chi Minh City",
+  "lat": 10.82,
+  "lon": 106.63,
+  "cc": "VN",
+  "tz": "Asia/Ho_Chi_Minh",
+  "wx": "metno"
+ },
+ {
+  "id": "jakarta",
+  "name": "Jakarta",
+  "lat": -6.21,
+  "lon": 106.85,
+  "cc": "ID",
+  "tz": "Asia/Jakarta",
+  "wx": "metno"
+ },
+ {
+  "id": "surabaya",
+  "name": "Surabaya",
+  "lat": -7.25,
+  "lon": 112.75,
+  "cc": "ID",
+  "tz": "Asia/Jakarta",
+  "wx": "metno"
+ },
+ {
+  "id": "manila",
+  "name": "Manila",
+  "lat": 14.6,
+  "lon": 120.98,
+  "cc": "PH",
+  "tz": "Asia/Manila",
+  "wx": "metno"
+ },
+ {
+  "id": "kuala-lumpur",
+  "name": "Kuala Lumpur",
+  "lat": 3.14,
+  "lon": 101.69,
+  "cc": "MY",
+  "tz": "Asia/Kuala_Lumpur",
+  "wx": "metno"
+ },
+ {
+  "id": "singapore",
+  "name": "Singapore",
+  "lat": 1.35,
+  "lon": 103.82,
+  "cc": "SG",
+  "tz": "Asia/Singapore",
+  "wx": "metno"
+ },
+ {
+  "id": "delhi",
+  "name": "Delhi",
+  "lat": 28.61,
+  "lon": 77.21,
+  "cc": "IN",
+  "tz": "Asia/Kolkata",
+  "wx": "metno"
+ },
+ {
+  "id": "mumbai",
+  "name": "Mumbai",
+  "lat": 19.08,
+  "lon": 72.88,
+  "cc": "IN",
+  "tz": "Asia/Kolkata",
+  "wx": "metno"
+ },
+ {
+  "id": "kolkata",
+  "name": "Kolkata",
+  "lat": 22.57,
+  "lon": 88.36,
+  "cc": "IN",
+  "tz": "Asia/Kolkata",
+  "wx": "metno"
+ },
+ {
+  "id": "bengaluru",
+  "name": "Bengaluru",
+  "lat": 12.97,
+  "lon": 77.59,
+  "cc": "IN",
+  "tz": "Asia/Kolkata",
+  "wx": "metno"
+ },
+ {
+  "id": "lahore",
+  "name": "Lahore",
+  "lat": 31.55,
+  "lon": 74.34,
+  "cc": "PK",
+  "tz": "Asia/Karachi",
+  "wx": "metno"
+ },
+ {
+  "id": "karachi",
+  "name": "Karachi",
+  "lat": 24.86,
+  "lon": 67.01,
+  "cc": "PK",
+  "tz": "Asia/Karachi",
+  "wx": "metno"
+ },
+ {
+  "id": "dhaka",
+  "name": "Dhaka",
+  "lat": 23.81,
+  "lon": 90.41,
+  "cc": "BD",
+  "tz": "Asia/Dhaka",
+  "wx": "metno"
+ },
+ {
+  "id": "kathmandu",
+  "name": "Kathmandu",
+  "lat": 27.72,
+  "lon": 85.32,
+  "cc": "NP",
+  "tz": "Asia/Kathmandu",
+  "wx": "metno"
+ },
+ {
+  "id": "dubai",
+  "name": "Dubai",
+  "lat": 25.2,
+  "lon": 55.27,
+  "cc": "AE",
+  "tz": "Asia/Dubai",
+  "wx": "metno"
+ },
+ {
+  "id": "riyadh",
+  "name": "Riyadh",
+  "lat": 24.71,
+  "lon": 46.68,
+  "cc": "SA",
+  "tz": "Asia/Riyadh",
+  "wx": "metno"
+ },
+ {
+  "id": "cairo",
+  "name": "Cairo",
+  "lat": 30.04,
+  "lon": 31.24,
+  "cc": "EG",
+  "tz": "Africa/Cairo",
+  "wx": "metno"
+ },
+ {
+  "id": "lagos",
+  "name": "Lagos",
+  "lat": 6.52,
+  "lon": 3.38,
+  "cc": "NG",
+  "tz": "Africa/Lagos",
+  "wx": "metno"
+ },
+ {
+  "id": "nairobi",
+  "name": "Nairobi",
+  "lat": -1.29,
+  "lon": 36.82,
+  "cc": "KE",
+  "tz": "Africa/Nairobi",
+  "wx": "metno"
+ },
+ {
+  "id": "johannesburg",
+  "name": "Johannesburg",
+  "lat": -26.2,
+  "lon": 28.05,
+  "cc": "ZA",
+  "tz": "Africa/Johannesburg",
+  "wx": "metno"
+ },
+ {
+  "id": "istanbul",
+  "name": "Istanbul",
+  "lat": 41.01,
+  "lon": 28.98,
+  "cc": "TR",
+  "tz": "Europe/Istanbul",
+  "wx": "metno"
+ },
+ {
+  "id": "tehran",
+  "name": "Tehran",
+  "lat": 35.69,
+  "lon": 51.39,
+  "cc": "IR",
+  "tz": "Asia/Tehran",
+  "wx": "metno"
+ },
+ {
+  "id": "moscow",
+  "name": "Moscow",
+  "lat": 55.76,
+  "lon": 37.62,
+  "cc": "RU",
+  "tz": "Europe/Moscow",
+  "wx": "metno"
+ },
+ {
+  "id": "warsaw",
+  "name": "Warsaw",
+  "lat": 52.23,
+  "lon": 21.01,
+  "cc": "PL",
+  "tz": "Europe/Warsaw",
+  "wx": "metno"
+ },
+ {
+  "id": "paris",
+  "name": "Paris",
+  "lat": 48.86,
+  "lon": 2.35,
+  "cc": "FR",
+  "tz": "Europe/Paris",
+  "wx": "metno"
+ },
+ {
+  "id": "london",
+  "name": "London",
+  "lat": 51.51,
+  "lon": -0.13,
+  "cc": "GB",
+  "tz": "Europe/London",
+  "wx": "metno"
+ },
+ {
+  "id": "berlin",
+  "name": "Berlin",
+  "lat": 52.52,
+  "lon": 13.41,
+  "cc": "DE",
+  "tz": "Europe/Berlin",
+  "wx": "metno"
+ },
+ {
+  "id": "madrid",
+  "name": "Madrid",
+  "lat": 40.42,
+  "lon": -3.7,
+  "cc": "ES",
+  "tz": "Europe/Madrid",
+  "wx": "metno"
+ },
+ {
+  "id": "rome",
+  "name": "Rome",
+  "lat": 41.9,
+  "lon": 12.5,
+  "cc": "IT",
+  "tz": "Europe/Rome",
+  "wx": "metno"
+ },
+ {
+  "id": "new-york",
+  "name": "New York",
+  "lat": 40.71,
+  "lon": -74.01,
+  "cc": "US",
+  "tz": "America/New_York",
+  "wx": "metno"
+ },
+ {
+  "id": "los-angeles",
+  "name": "Los Angeles",
+  "lat": 34.05,
+  "lon": -118.24,
+  "cc": "US",
+  "tz": "America/Los_Angeles",
+  "wx": "metno"
+ },
+ {
+  "id": "chicago",
+  "name": "Chicago",
+  "lat": 41.88,
+  "lon": -87.63,
+  "cc": "US",
+  "tz": "America/Chicago",
+  "wx": "metno"
+ },
+ {
+  "id": "toronto",
+  "name": "Toronto",
+  "lat": 43.65,
+  "lon": -79.38,
+  "cc": "CA",
+  "tz": "America/Toronto",
+  "wx": "metno"
+ },
+ {
+  "id": "mexico-city",
+  "name": "Mexico City",
+  "lat": 19.43,
+  "lon": -99.13,
+  "cc": "MX",
+  "tz": "America/Mexico_City",
+  "wx": "metno"
+ },
+ {
+  "id": "bogota",
+  "name": "Bogotá",
+  "lat": 4.71,
+  "lon": -74.07,
+  "cc": "CO",
+  "tz": "America/Bogota",
+  "wx": "metno"
+ },
+ {
+  "id": "lima",
+  "name": "Lima",
+  "lat": -12.05,
+  "lon": -77.04,
+  "cc": "PE",
+  "tz": "America/Lima",
+  "wx": "metno"
+ },
+ {
+  "id": "santiago",
+  "name": "Santiago",
+  "lat": -33.45,
+  "lon": -70.67,
+  "cc": "CL",
+  "tz": "America/Santiago",
+  "wx": "metno"
+ },
+ {
+  "id": "sao-paulo",
+  "name": "São Paulo",
+  "lat": -23.55,
+  "lon": -46.63,
+  "cc": "BR",
+  "tz": "America/Sao_Paulo",
+  "wx": "metno"
+ },
+ {
+  "id": "rio-de-janeiro",
+  "name": "Rio de Janeiro",
+  "lat": -22.91,
+  "lon": -43.17,
+  "cc": "BR",
+  "tz": "America/Sao_Paulo",
+  "wx": "metno"
+ },
+ {
+  "id": "buenos-aires",
+  "name": "Buenos Aires",
+  "lat": -34.6,
+  "lon": -58.38,
+  "cc": "AR",
+  "tz": "America/Argentina/Buenos_Aires",
+  "wx": "metno"
+ },
+ {
+  "id": "sydney",
+  "name": "Sydney",
+  "lat": -33.87,
+  "lon": 151.21,
+  "cc": "AU",
+  "tz": "Australia/Sydney",
+  "wx": "metno"
+ }
+]
