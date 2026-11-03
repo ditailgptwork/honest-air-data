@@ -21,9 +21,16 @@ SANE_MAX = {"pm25": 1500.0, "pm10": 3000.0, "o3": 1500.0, "no2": 1500.0}
 
 
 LAST_DEBUG = {}
+FRESH_H = 3.0   # a reading this recent is shown as the value now
+CALIB_H = 6.0   # an older reading, up to this age, only corrects the model
 
 
-def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=3.0, pause=1.1):
+def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRESH_H, pause=1.1):
+    """Nearest station with a PM2.5 reading no older than max_age_h.
+
+    A station read within fresh_h wins over a closer one with an older reading.
+    The result carries age_h (hours since the PM2.5 reading) so the caller decides
+    whether to show it as the value now or use it only to correct the model."""
     headers = {"X-API-Key": key}
     j = get_json(f"{OPENAQ}/locations",
                  {"coordinates": f"{lat:.4f},{lon:.4f}", "radius": radius_m, "limit": 100}, headers=headers)
@@ -43,18 +50,18 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=3.0, pause=1.1):
             continue
         c = loc.get("coordinates") or {}
         d = haversine_km(lat, lon, c.get("latitude", lat), c.get("longitude", lon))
-        if best is None or d < best[0]:
-            best = (d, loc, sensors)
+        rank = (0 if age <= fresh_h else 1, d)
+        if best is None or rank < best[0]:
+            best = (rank, d, loc, sensors)
     LAST_DEBUG.clear()
     LAST_DEBUG.update({"locations": len(results), "pm25_locations": len(ages),
                        "freshest_h": round(min(ages), 1) if ages else None})
     if best is None:
         return None
-    d, loc, sensors = best
+    _, d, loc, sensors = best
     time.sleep(pause)
     lj = get_json(f"{OPENAQ}/locations/{loc['id']}/latest", headers=headers)
-    out = {"src": "station", "station": loc.get("name"), "dist_km": round(d, 1),
-           "provider": (loc.get("provider") or {}).get("name")}
+    vals = {}
     for r in lj.get("results", []):
         p = sensors.get(r.get("sensorsId")) or {}
         name = p.get("name")
@@ -62,7 +69,10 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=3.0, pause=1.1):
             continue
         v = r.get("value")
         t = (r.get("datetime") or {}).get("utc")
-        if v is None or v < 0 or not t or (now - parse_iso(t)).total_seconds() / 3600 > max_age_h:
+        if v is None or v < 0 or not t:
+            continue
+        age = (now - parse_iso(t)).total_seconds() / 3600
+        if age > max_age_h:
             continue
         unit = (p.get("units") or "").lower()
         if name in UG_PER_PPM:
@@ -72,10 +82,17 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=3.0, pause=1.1):
                 v *= UG_PER_PPM[name] / 1000
         if v > SANE_MAX[name]:
             continue
-        out[name] = r1(v)
-        if name == "pm25":
-            out["at"] = t
-    return out if "pm25" in out else None
+        vals[name] = (r1(v), t, age)
+    if "pm25" not in vals:
+        return None
+    _, t25, a25 = vals["pm25"]
+    limit = fresh_h if a25 <= fresh_h else max_age_h
+    out = {"src": "station", "station": loc.get("name"), "dist_km": round(d, 1),
+           "provider": (loc.get("provider") or {}).get("name"), "at": t25, "age_h": round(max(a25, 0.0), 2)}
+    for name, (v, _, age) in vals.items():
+        if age <= limit:
+            out[name] = v
+    return out
 
 
 # ---------------------------------------------------------------- MET Norway

@@ -5,7 +5,7 @@ Hourly open-data pipeline for the Honest Air app (Ditail Labs). It turns public 
 Files (published every hour):
 
 - `v1/index.json`: cities and countries
-- `v1/c/{CC}.json`: air (ground station first, CAMS model as fallback), 24 h model forecast, weather
+- `v1/c/{CC}.json`: air, 24 h model forecast, weather. Air is a ground station read within 3 h (`src: station`); otherwise the CAMS model at this hour, fitted to a station read within 6 h when there is one (`src: fit`, the reading in `ref`), or the raw model (`src: model`). The forecast is scaled to the reading and fades back to the raw model (12 h time constant).
 - `v1/quakes.json`: M4.5+ earthquakes in the last 24 h
 - `v1/status.json`: what worked in the last run
 

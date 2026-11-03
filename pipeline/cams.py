@@ -120,6 +120,17 @@ def refresh(cities, now, workdir=Path("cache"), log=print):
     return cache, False
 
 
+def value_at(cache, city_id, key, t):
+    """Model value at time t by linear interpolation, or None outside the run."""
+    if not cache or city_id not in cache.get("cities", {}):
+        return None
+    xs = [parse_iso(x).timestamp() for x in cache["times"]]
+    x = t.timestamp()
+    if not xs or x < xs[0] or x > xs[-1]:
+        return None
+    return float(np.interp(x, xs, np.array(cache["cities"][city_id][key], dtype=float)))
+
+
 def series_from(cache, city_id, now, hours=24):
     """Hourly values from the current hour, linear interpolation if the run is 3-hourly."""
     if not cache or city_id not in cache.get("cities", {}):

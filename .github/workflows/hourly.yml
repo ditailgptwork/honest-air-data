@@ -8,6 +8,7 @@ on:
     paths:
       - "pipeline/**"
       - "cities.json"
+      - "tests/**"
       - ".github/workflows/hourly.yml"
 permissions:
   contents: read
@@ -24,13 +25,14 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - uses: actions/cache/restore@v4
+      - run: python tests/test_offline.py
+      - uses: actions/cache/restore@v5
         with:
           path: cache
           key: cams-${{ github.run_id }}
@@ -43,13 +45,13 @@ jobs:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
       - if: steps.build.outputs.cams_updated == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: cache
           key: cams-${{ github.run_id }}
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

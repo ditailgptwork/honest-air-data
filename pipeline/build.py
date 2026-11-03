@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from . import cams, sources
-from .common import clean, iso, utcnow
+from .common import clean, iso, parse_iso, utcnow
 
 SITE = Path("site/v1")
 ATTR = {
@@ -30,26 +30,55 @@ ATTR = {
 }
 
 
-def fit_model(model, air, tau_h=12.0):
-    """Scale the model series to the measured value now, fading back to the raw model.
+def fit_model(model, obs, cache=None, city_id=None, tau_h=12.0):
+    """Scale the model series to a measured value, fading back to the raw model.
 
     CAMS can be several times off at a single point (Seoul, 2026-11-03: model 101 vs
-    station 29 ug/m3). The factor at hour h is 1 + (f0 - 1) * exp(-h / tau)."""
+    station 29 ug/m3). The factor f0 compares the reading with the model at the time
+    of the reading, and it fades from that time: 1 + (f0 - 1) * exp(-lag / tau),
+    where lag is the hours between the reading and each forecast hour."""
+    t0 = parse_iso(model["t0"])
+    t_obs = parse_iso(obs["at"]) if obs.get("at") else t0
+    lag0 = max(0.0, (t0 - t_obs).total_seconds() / 3600)
     f25 = None
     for k in ("pm25", "pm10"):
         series = model.get(k) or []
-        m0, v = (series[0] if series else None), air.get(k)
+        if not series:
+            continue
+        m_obs = cams.value_at(cache, city_id, k, t_obs) if cache else None
+        if m_obs is None:
+            m_obs = series[0]
+        v = obs.get(k)
         f0 = None
-        if m0 and m0 > 0 and v is not None:
-            f0 = max(0.2, min(5.0, v / m0))
+        if m_obs and m_obs > 0 and v is not None:
+            f0 = max(0.2, min(5.0, v / m_obs))
         elif k == "pm10" and f25 is not None:
             f0 = f25
         if f0 is None:
             continue
         if k == "pm25":
             f25 = f0
-        model[k] = [round(x * (1 + (f0 - 1) * math.exp(-h / tau_h)), 1) for h, x in enumerate(series)]
+        model[k] = [round(x * (1 + (f0 - 1) * math.exp(-(lag0 + h) / tau_h)), 1) for h, x in enumerate(series)]
         model["fit"] = True
+        model.setdefault("fit_f", {})[k] = round(f0, 2)
+
+
+def choose_air(model, obs, fresh_h=sources.FRESH_H):
+    """What the app shows as the air now.
+
+    station: a reading within fresh_h, shown as measured.
+    fit:     the model at this hour after fitting it to an older reading (ref).
+    model:   the raw model, no usable station.
+    An older reading with no model at all is still shown as measured, with its time."""
+    if obs and obs.get("age_h", 0) <= fresh_h:
+        return obs
+    if model and model.get("pm25"):
+        air = {"src": "fit" if obs else "model", "pm25": model["pm25"][0],
+               "pm10": (model.get("pm10") or [None])[0], "at": model["t0"]}
+        if obs:
+            air["ref"] = {k: obs.get(k) for k in ("station", "dist_km", "provider", "pm25", "pm10", "at")}
+        return air
+    return obs
 
 
 def write(path, obj):
@@ -60,7 +89,7 @@ def write(path, obj):
 def main():
     now = utcnow()
     cities = json.loads(Path("cities.json").read_text(encoding="utf-8"))
-    errors = []
+    errors, notes = [], []
     cache, cams_updated = cams.refresh(cities, now, log=print)
     oa_key = os.environ.get("OPENAQ_API_KEY")
     kr_key = os.environ.get("DATA_GO_KR_KEY")
@@ -68,19 +97,20 @@ def main():
     for c in cities:
         rec = {k: c[k] for k in ("id", "name", "lat", "lon", "cc", "tz")}
         model = cams.series_from(cache, c["id"], now)
-        air = None
+        obs = None
         if oa_key:
             try:
-                air = sources.openaq_nearest(c["lat"], c["lon"], oa_key)
+                obs = sources.openaq_nearest(c["lat"], c["lon"], oa_key)
+                if obs is None:
+                    notes.append(f"no station {c['id']}: {dict(sources.LAST_DEBUG)}")
             except Exception as e:  # noqa: BLE001
                 errors.append(f"openaq {c['id']}: {clean(e)}")
             time.sleep(1.1)
-        if oa_key and air is None:
-            errors.append(f"no fresh station {c['id']}: {dict(sources.LAST_DEBUG)}")
-        if model and air and air.get("src") == "station":
-            fit_model(model, air)
-        if air is None and model and model.get("pm25"):
-            air = {"src": "model", "pm25": model["pm25"][0], "pm10": model["pm10"][0], "at": model["t0"]}
+        if model and obs:
+            fit_model(model, obs, cache, c["id"])
+        air = choose_air(model, obs)
+        if air and air.get("src") == "fit":
+            notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
         wx = None
         try:
             if c["wx"] == "kma":
@@ -111,9 +141,11 @@ def main():
         for r in recs:
             if r["model"]:
                 used.add("cams")
-            if r["air"] and r["air"].get("src") == "station":
+            a = r["air"] or {}
+            st = a if a.get("src") == "station" else a.get("ref")
+            if st:
                 used.add("openaq")
-                if (r["air"].get("provider") or "").lower().startswith("airkorea"):
+                if (st.get("provider") or "").lower().startswith("airkorea"):
                     used.add("airkorea")
             if r["wx"]:
                 used.add(r["wx"]["src"])
@@ -127,14 +159,17 @@ def main():
                                      "quakes": sources.usgs_quakes()[:60]})
     except Exception as e:  # noqa: BLE001
         errors.append(f"usgs: {clean(e)}")
-    n_station = sum(1 for recs in by_cc.values() for r in recs if r["air"] and r["air"]["src"] == "station")
+    srcs = [r["air"]["src"] for recs in by_cc.values() for r in recs if r["air"]]
+    n_station, n_fit = srcs.count("station"), srcs.count("fit")
+    fits = {r["id"]: r["model"].get("fit_f") for recs in by_cc.values() for r in recs
+            if r["model"] and r["model"].get("fit_f")}
     write(SITE / "status.json", {"v": 1, "generated": iso(now), "cams_base": (cache or {}).get("base"),
-                                 "cities": len(cities), "air": ok_air, "station": n_station, "weather": ok_wx,
-                                 "errors": errors[:40]})
-    summary = (f"cities {len(cities)} | air {ok_air} (station {n_station}) | weather {ok_wx} | "
-               f"CAMS {(cache or {}).get('base')} | errors {len(errors)}")
+                                 "cities": len(cities), "air": ok_air, "station": n_station, "fit": n_fit,
+                                 "weather": ok_wx, "fit_f": fits, "errors": errors[:40], "notes": notes[:60]})
+    summary = (f"cities {len(cities)} | air {ok_air} (station {n_station}, fit {n_fit}) | weather {ok_wx} | "
+               f"CAMS {(cache or {}).get('base')} | errors {len(errors)} | notes {len(notes)}")
     print(summary)
-    for e in errors[:40]:
+    for e in errors[:40] + notes[:60]:
         print(" -", e)
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
@@ -143,7 +178,7 @@ def main():
     gh_sum = os.environ.get("GITHUB_STEP_SUMMARY")
     if gh_sum:
         with open(gh_sum, "a", encoding="utf-8") as fh:
-            fh.write(summary + "\n\n" + "\n".join(f"- {e}" for e in errors[:40]) + "\n")
+            fh.write(summary + "\n\n" + "\n".join(f"- {e}" for e in errors[:40] + notes[:60]) + "\n")
 
 
 if __name__ == "__main__":
