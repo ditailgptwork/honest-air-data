@@ -277,6 +277,9 @@ def main():
                       "steady": (r["model"].get("steady_f") or {}).get("pm25"),
                       "by": (r["model"].get("fit_by") or {}).get("city") or (r["model"].get("fit_by") or {}).get("provider")}
             for recs in by_cc.values() for r in recs if r["model"] and r["model"].get("fit")}
+    if sources.HELD:
+        notes.append("licences held back: " + ", ".join(f"{k} x{v}" for k, v in
+                                                     sorted(sources.HELD.items(), key=lambda kv: -kv[1])[:8]))
     write(SITE / "status.json", {"v": 1, "generated": iso(now), "cams_base": (cache or {}).get("base"),
                                  "cities": len(cities), "air": ok_air, "station": n_station, "fit": n_fit,
                                  "weather": ok_wx, "fit_f": fits, "errors": errors[:40], "notes": notes[:60]})

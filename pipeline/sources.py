@@ -9,6 +9,7 @@
 import datetime as dt
 import math
 import time
+import unicodedata
 
 from .common import (apparent_temp, get_json, get_text, haversine_km, iso, parse_iso, r1, utcnow,
                      vmax, vmin, wmo_from_jma, wmo_from_kma, wmo_from_met)
@@ -44,8 +45,8 @@ def _provider(loc):
 # no-derivatives -> shown as published, never fitted; share-alike -> shown, not
 # fitted; a licence we have not reviewed (custom terms) -> not used.
 LICENCES = {}
-REVIEWED = ("cc by", "cc0", "public domain", "odc-by", "open government licence", "ogl", "kogl",
-            "pddl", "odbl", "nlod")
+HOLD = ("term", "condition", "proprietary", "unknown", "all rights reserved")  # custom terms: a person reviews first
+HELD = {}  # licence name -> locations held back this run (for status notes)
 
 
 def load_licences(key):
@@ -64,17 +65,21 @@ def load_licences(key):
 
 
 def licence_use(loc):
-    """'fit' (show and fit), 'show' (show as published only) or None (do not use)."""
-    lics = [LICENCES.get(x.get("id")) or {"name": x.get("name") or "", "unknown": True}
-            for x in (loc.get("licenses") or [])]
-    if not lics:
+    """'fit' (show and fit), 'show' (show as published only) or None (do not use).
+
+    The flags on /v3/licenses decide; a licence whose terms are custom (its name says
+    terms/conditions) or that OpenAQ does not describe is held back."""
+    refs = loc.get("licenses") or []
+    if not refs:
+        HELD["(none)"] = HELD.get("(none)", 0) + 1
         return None
     use = "fit"
-    for lic in lics:
-        name = (lic.get("name") or "").lower()
-        if lic.get("unknown") or not any(k in name for k in REVIEWED):
-            return None
-        if not lic.get("commercial", True):
+    for x in refs:
+        lic = LICENCES.get(x.get("id"))
+        name = (x.get("name") or (lic or {}).get("name") or "").strip()
+        plain = "".join(ch for ch in unicodedata.normalize("NFKD", name.lower()) if not unicodedata.combining(ch))
+        if lic is None or any(k in plain for k in HOLD) or not lic.get("commercial", True):
+            HELD[name or "(unnamed)"] = HELD.get(name or "(unnamed)", 0) + 1
             return None
         if not lic.get("modify", True) or lic.get("share_alike"):
             use = "show"

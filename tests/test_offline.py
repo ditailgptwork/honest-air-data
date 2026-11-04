@@ -122,7 +122,11 @@ sources.LICENCES.update({1: {"name": "CC BY 4.0", "commercial": True, "modify": 
                          4: {"name": "CC BY-SA 4.0", "commercial": True, "modify": True, "share_alike": True}})
 lu = sources.licence_use
 assert lu({"licenses": []}) is None and lu({"licenses": [{"id": 3, "name": "CC BY-NC 4.0"}]}) is None
-assert lu({"licenses": [{"id": 9, "name": "SINAICA terms"}]}) is None
+assert lu({"licenses": [{"id": 9, "name": "SINAICA terms"}]}) is None  # not described by OpenAQ
+sources.LICENCES[5] = {"name": "Términos de uso SINAICA", "commercial": True, "modify": True, "share_alike": False}
+assert lu({"licenses": [{"id": 5, "name": "Términos de uso SINAICA"}]}) is None  # custom terms: held back
+sources.LICENCES[6] = {"name": "Korea Open Government License Type 3", "commercial": True, "modify": False, "share_alike": False}
+assert lu({"licenses": [{"id": 6, "name": "Korea Open Government License Type 3"}]}) == "show"
 assert lu({"licenses": [{"id": 4, "name": "CC BY-SA 4.0"}]}) == "show" and lu({"licenses": [{"id": 1, "name": "CC BY 4.0"}]}) == "fit"
 assert lu({"licenses": [{"id": 1, "name": "CC BY 4.0"}], "provider": {"name": "AirKorea"}}) == "show"
 q = lambda: sources.openaq_nearest(37.57, 126.98, "k", pause=0)  # noqa: E731
