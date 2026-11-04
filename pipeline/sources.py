@@ -47,6 +47,17 @@ def _provider(loc):
 LICENCES = {}
 HOLD = ("term", "condition", "proprietary", "unknown", "all rights reserved")  # custom terms: a person reviews first
 HELD = {}  # licence name -> locations held back this run (for status notes)
+# Terms we have read: Japan's 政府標準利用規約 2.0 is CC BY 4.0 compatible (commercial use and
+# modification allowed with attribution).
+REVIEWED_OK = ("政府標準利用規約", "government standard terms of use")
+# Providers OpenAQ lists without a licence whose terms we checked at the source.
+KNOWN = {"korea air ministry of environment": ("KOGL Type 3 (data.go.kr 15073861)", "show"),
+         "airkorea": ("KOGL Type 3 (data.go.kr 15073861)", "show")}
+
+
+def _known(loc):
+    p = (_provider(loc) or "").lower()
+    return next((v for k, v in KNOWN.items() if k in p), None)
 
 
 def load_licences(key):
@@ -71,6 +82,9 @@ def licence_use(loc):
     terms/conditions) or that OpenAQ does not describe is held back."""
     refs = loc.get("licenses") or []
     if not refs:
+        known = _known(loc)
+        if known:
+            return known[1]
         HELD["(none)"] = HELD.get("(none)", 0) + 1
         return None
     use = "fit"
@@ -78,7 +92,8 @@ def licence_use(loc):
         lic = LICENCES.get(x.get("id"))
         name = (x.get("name") or (lic or {}).get("name") or "").strip()
         plain = "".join(ch for ch in unicodedata.normalize("NFKD", name.lower()) if not unicodedata.combining(ch))
-        if lic is None or any(k in plain for k in HOLD) or not lic.get("commercial", True):
+        custom = any(k in plain for k in HOLD) and not any(k in name or k in plain for k in REVIEWED_OK)
+        if lic is None or custom or not lic.get("commercial", True):
             HELD[name or "(unnamed)"] = HELD.get(name or "(unnamed)", 0) + 1
             return None
         if not lic.get("modify", True) or lic.get("share_alike"):
@@ -90,6 +105,8 @@ def licence_use(loc):
 
 def _licence_text(loc):
     names = sorted({(x.get("name") or "").strip() for x in (loc.get("licenses") or []) if x.get("name")})
+    if not names and _known(loc):
+        names = [_known(loc)[0]]
     return ", ".join(names)
 
 

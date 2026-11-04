@@ -127,6 +127,10 @@ sources.LICENCES[5] = {"name": "Términos de uso SINAICA", "commercial": True, "
 assert lu({"licenses": [{"id": 5, "name": "Términos de uso SINAICA"}]}) is None  # custom terms: held back
 sources.LICENCES[6] = {"name": "Korea Open Government License Type 3", "commercial": True, "modify": False, "share_alike": False}
 assert lu({"licenses": [{"id": 6, "name": "Korea Open Government License Type 3"}]}) == "show"
+assert lu({"licenses": [], "provider": {"name": "Korea Air Ministry of Environment"}}) == "show"  # checked at data.go.kr
+sources.LICENCES[7] = {"name": "政府標準利用規約（第2.0版） (Government Standard Terms of Use v2.0)", "commercial": True,
+                       "modify": True, "share_alike": False}
+assert lu({"licenses": [{"id": 7, "name": "政府標準利用規約（第2.0版） (Government Standard Terms of Use v2.0)"}]}) == "fit"
 assert lu({"licenses": [{"id": 4, "name": "CC BY-SA 4.0"}]}) == "show" and lu({"licenses": [{"id": 1, "name": "CC BY 4.0"}]}) == "fit"
 assert lu({"licenses": [{"id": 1, "name": "CC BY 4.0"}], "provider": {"name": "AirKorea"}}) == "show"
 q = lambda: sources.openaq_nearest(37.57, 126.98, "k", pause=0)  # noqa: E731
