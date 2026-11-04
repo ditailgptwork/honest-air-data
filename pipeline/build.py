@@ -20,14 +20,20 @@ from .common import clean, haversine_km, iso, parse_iso, utcnow
 
 SITE = Path("site/v1")
 ATTR = {
-    "cams": "Generated using Copernicus Atmosphere Monitoring Service information 2026",
-    "openaq": "OpenAQ (openaq.org)",
-    "airkorea": "한국환경공단 에어코리아 (공공누리 제3유형)",
-    "MET Norway": "MET Norway Locationforecast (CC BY 4.0)",
-    "KMA": "기상청 단기예보",
-    "JMA": "出典：気象庁ホームページ",
-    "usgs": "U.S. Geological Survey",
+    "cams": "Contains modified Copernicus Atmosphere Monitoring Service information 2026 (CC BY 4.0, "
+            "https://creativecommons.org/licenses/by/4.0/), corrected with station readings. Neither the European "
+            "Commission nor ECMWF is responsible for any use that may be made of the Copernicus information or "
+            "data it contains.",
+    "openaq": "Data: OpenAQ (openaq.org) and the original providers",
+    "airkorea": "한국환경공단 에어코리아 (공공누리 제3유형: 출처표시·변경금지, www.airkorea.or.kr). 실시간 자료는 확정 전 자료예요.",
+    "airnow": "Preliminary data from AirNow (US EPA) and local agencies; not fully verified, subject to change.",
+    "eea": "European Environment Agency (latest data, not yet validated).",
+    "MET Norway": "Based on data from MET Norway (CC BY 4.0, api.met.no).",
+    "KMA": "자료: 기상청 단기예보 (공공누리 제1유형)",
+    "JMA": "出典：気象庁ホームページ（https://www.jma.go.jp/）を加工して作成",
+    "usgs": "Source: U.S. Geological Survey (earthquake.usgs.gov)",
 }
+POLICY = json.loads(Path("policy.json").read_text(encoding="utf-8")) if Path("policy.json").exists() else {}
 
 
 def ratios_at_reading(model, obs, cache, city_id):
@@ -94,7 +100,7 @@ def choose_air(model, obs, fresh_h=sources.FRESH_H):
     fit:     the model at this hour after fitting it to an older reading (ref).
     model:   the raw model, no usable station.
     An older reading with no model at all is still shown as measured, with its time."""
-    if obs and (obs.get("age_h", 0) <= fresh_h or sources.no_deriv(obs.get("provider"))):
+    if obs and (obs.get("age_h", 0) <= fresh_h or not obs.get("fit_ok", True)):
         return obs  # a no-derivatives reading is never mixed into the model: shown as is, with its time
     if model and model.get("pm25"):
         air = {"src": "fit" if obs else "model", "pm25": model["pm25"][0],
@@ -141,6 +147,11 @@ def main():
     errors, notes = [], []
     cache, cams_updated = cams.refresh(cities, now, log=print)
     hist = bias.load()
+    if os.environ.get("OPENAQ_API_KEY"):
+        try:
+            sources.load_licences(os.environ["OPENAQ_API_KEY"])
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"openaq licences: {clean(e)} (no station is used this run)")
     down = {}  # weather service -> failures in a row during this run
     donors, pending = [], []  # (city, model) fitted to an open station / waiting to borrow a fit
     oa_key = os.environ.get("OPENAQ_API_KEY")
@@ -148,11 +159,15 @@ def main():
     by_cc = {}
     for c in cities:
         rec = {k: c[k] for k in ("id", "name", "lat", "lon", "cc", "tz")}
+        pol = POLICY.get(c["cc"], {})
+        limits = [k for k in ("forecast", "weather", "quakes") if pol.get(k) is False]
+        if limits:
+            rec["limits"] = limits
         model = cams.series_from(cache, c["id"], now)
         obs = None
         if oa_key:
             try:
-                obs = sources.openaq_nearest(c["lat"], c["lon"], oa_key)
+                obs = sources.openaq_nearest(c["lat"], c["lon"], oa_key, monitors_only=bool(pol.get("monitors_only")))
                 if obs is None:
                     notes.append(f"no station {c['id']}: {dict(sources.LAST_DEBUG)}")
             except Exception as e:  # noqa: BLE001
@@ -162,7 +177,7 @@ def main():
         if model and obs:
             # The model is fitted to the shown reading, or, when that one may not be
             # changed (AirKorea), to another open station nearby.
-            src = calib if sources.no_deriv(obs.get("provider")) else obs
+            src = obs if obs.get("fit_ok", True) else calib
             if src:
                 ratios = ratios_at_reading(model, src, cache, c["id"])
                 if suspect(src, ratios):
@@ -177,23 +192,29 @@ def main():
                     donors.append((c, model))
             else:
                 pending.append((c, model))
+        if "forecast" in limits:
+            model = None  # forecasts need a local licence here (policy.json); show readings only
         air = choose_air(model, obs)
         if air and air.get("src") == "fit":
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
         wx = None
         try:
+            if "weather" in limits:
+                raise LookupError("skip")
             if c["wx"] == "kma" and kr_key and down.get("kma", 0) < 2:
                 wx = sources.kma_weather(c["lat"], c["lon"], kr_key)
                 down["kma"] = 0
             elif c["wx"] == "jma" and down.get("jma", 0) < 2:
                 wx = sources.jma_weather(**c["jma"])
                 down["jma"] = 0
+        except LookupError:
+            pass
         except Exception as e:  # noqa: BLE001
             # Two failures in a row: the service is down for this run, so the other
             # cities go straight to MET Norway instead of waiting on timeouts.
             down[c["wx"]] = down.get(c["wx"], 0) + 1
             notes.append(f"wx {c['id']} {c['wx']} failed, MET Norway instead: {clean(e)[:120]}")
-        if wx is None:
+        if wx is None and "weather" not in limits:
             try:
                 wx = sources.metno_weather(c["lat"], c["lon"])
                 time.sleep(0.2)
@@ -201,7 +222,7 @@ def main():
                 errors.append(f"wx {c['id']}: {clean(e)}")
         if wx is not None:
             uv = (model or {}).get("uv") or []
-            wx["uvmax"] = max(uv) if uv else wx.get("uvmax_clear")
+            wx["uvmax"] = max(uv) if uv else (None if "forecast" in limits else wx.get("uvmax_clear"))
         rec.update(air=air, model=model, wx=wx)
         by_cc.setdefault(c["cc"], []).append(rec)
 
@@ -215,20 +236,31 @@ def main():
         sys.exit(1)
 
     for cc, recs in by_cc.items():
-        used = set()
+        used, providers = set(), set()
         for r in recs:
             if r["model"]:
                 used.add("cams")
             a = r["air"] or {}
             st = a if a.get("src") == "station" else a.get("ref")
-            if st:
+            fb = (r["model"] or {}).get("fit_by") or {}
+            for prov in [(st or {}).get("provider"), fb.get("provider")]:
+                if not prov:
+                    continue
                 used.add("openaq")
-                if is_airkorea(st.get("provider")):
+                low = prov.lower()
+                if is_airkorea(prov):
                     used.add("airkorea")
+                if "airnow" in low:
+                    used.add("airnow")
+                if "eea" in low or "european environment" in low:
+                    used.add("eea")
+                providers.add(prov)
             if r["wx"]:
                 used.add(r["wx"]["src"])
         write(SITE / "c" / f"{cc}.json", {"v": 1, "generated": iso(now), "cc": cc,
-                                          "attr": [ATTR[k] for k in ATTR if k in used], "cities": recs})
+                                          "attr": [ATTR[k] for k in ATTR if k in used]
+                                          + [f"Station data: {p} via OpenAQ" for p in sorted(providers)],
+                                          "cities": recs})
     write(SITE / "index.json", {
         "v": 1, "generated": iso(now), "countries": sorted(by_cc),
         "cities": [{k: c[k] for k in ("id", "name", "cc", "lat", "lon")} for c in cities]})

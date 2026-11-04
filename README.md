@@ -20,4 +20,9 @@ Data sources and attribution:
 - 한국환경공단 에어코리아 (공공누리 제3유형: 출처표시·변경금지). Values are shown exactly as published and are never used to fit the model or kept in `bias.json`; the forecast for Korean cities is fitted to other open stations nearby, or takes the steady ratio of the nearest such city within 200 km, or stays the raw CAMS model.
 - U.S. Geological Survey earthquake feeds.
 
+Licence and country rules (pre-launch review, 2026-11-04):
+
+- A station is used only when OpenAQ lists a reviewed licence for it that allows commercial use. No licence, non-commercial or unreviewed custom terms: not used. No-derivatives (AirKorea) or share-alike: shown exactly as published, never used to fit the model.
+- `policy.json` turns off forecasts, weather or earthquakes per country where a local licence is needed (Japan, Taiwan, Vietnam, Indonesia, Saudi Arabia, Kenya) and limits Türkiye to government monitors. Earthquakes in and around Korea are left out (지진관측법 §16).
+
 Keys live in GitHub Actions secrets and are never written to this repository or to the published files.

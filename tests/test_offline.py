@@ -72,7 +72,7 @@ assert build.suspect({"monitor": False, "pm25": 400}, {"pm25": 9})
 assert build.is_airkorea("Korea Air Ministry of Environment") and build.is_airkorea("AirKorea")
 assert not build.is_airkorea("AirNow") and not build.is_airkorea(None)
 
-ak = dict(obs, provider="Korea Air Ministry of Environment", age_h=4.5)
+ak = dict(obs, provider="Korea Air Ministry of Environment", fit_ok=False, age_h=4.5)
 assert build.choose_air(m, ak)["src"] == "station"  # no-derivatives reading: shown as is, never mixed in
 assert sources.no_deriv("Korea Air Ministry of Environment") and not sources.no_deriv("AirGradient")
 pend = [({"id": "a", "cc": "KR", "lat": 36.99, "lon": 127.93}, {"pm25": [100.0, 100.0], "pm10": [200.0, 200.0]}),
@@ -101,6 +101,9 @@ def fake_get_json(url, params=None, headers=None, **kw):
     if url.endswith("/locations"):
         return {"results": [{"id": i, "name": f"loc{i}", "isMonitor": mon,
                              "provider": {"name": getattr(fake_get_json, "prov", {}).get(i, "X")},
+                             "licenses": [{"id": 2 if "Korea" in getattr(fake_get_json, "prov", {}).get(i, "") else 1,
+                                           "name": "KOGL Type 3" if "Korea" in getattr(fake_get_json, "prov", {}).get(i, "")
+                                           else "CC BY 4.0"}],
                              "coordinates": {"latitude": la, "longitude": 126.98},
                              "datetimeLast": {"utc": iso(t - age * H)},
                              "sensors": [{"id": i * 10 + 1, "parameter": {"name": "pm25", "units": "µg/m³"}},
@@ -113,6 +116,15 @@ def fake_get_json(url, params=None, headers=None, **kw):
 
 
 sources.get_json = fake_get_json
+sources.LICENCES.update({1: {"name": "CC BY 4.0", "commercial": True, "modify": True, "share_alike": False},
+                         2: {"name": "KOGL Type 3", "commercial": True, "modify": False, "share_alike": False},
+                         3: {"name": "CC BY-NC 4.0", "commercial": False, "modify": True, "share_alike": False},
+                         4: {"name": "CC BY-SA 4.0", "commercial": True, "modify": True, "share_alike": True}})
+lu = sources.licence_use
+assert lu({"licenses": []}) is None and lu({"licenses": [{"id": 3, "name": "CC BY-NC 4.0"}]}) is None
+assert lu({"licenses": [{"id": 9, "name": "SINAICA terms"}]}) is None
+assert lu({"licenses": [{"id": 4, "name": "CC BY-SA 4.0"}]}) == "show" and lu({"licenses": [{"id": 1, "name": "CC BY 4.0"}]}) == "fit"
+assert lu({"licenses": [{"id": 1, "name": "CC BY 4.0"}], "provider": {"name": "AirKorea"}}) == "show"
 q = lambda: sources.openaq_nearest(37.57, 126.98, "k", pause=0)  # noqa: E731
 fake_get_json.spec = {1: (True, 4, 37.57, 12.0), 2: (True, 1, 37.70, 15.0)}
 assert q()["station"] == "loc2"  # both monitors: the fresh one wins over the closer old one

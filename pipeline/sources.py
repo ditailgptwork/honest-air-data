@@ -39,7 +39,57 @@ def _provider(loc):
     return (loc.get("provider") or {}).get("name")
 
 
-def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRESH_H, pause=1.1, tries=3):
+# Licence gate (legal_global.md 1.4). OpenAQ lists licences per location; the flags
+# live on /v3/licenses. Rules: no licence -> not used; non-commercial -> not used;
+# no-derivatives -> shown as published, never fitted; share-alike -> shown, not
+# fitted; a licence we have not reviewed (custom terms) -> not used.
+LICENCES = {}
+REVIEWED = ("cc by", "cc0", "public domain", "odc-by", "open government licence", "ogl", "kogl",
+            "pddl", "odbl", "nlod")
+
+
+def load_licences(key):
+    """id -> flags, once per run. Missing table = every location is held back."""
+    if LICENCES:
+        return LICENCES
+    j = get_json(f"{OPENAQ}/licenses", {"limit": 1000}, headers={"X-API-Key": key})
+    for lic in j.get("results", []):
+        LICENCES[lic.get("id")] = {
+            "name": lic.get("name") or "",
+            "commercial": lic.get("commercialUseAllowed") is not False,
+            "modify": lic.get("modificationAllowed") is not False,
+            "share_alike": bool(lic.get("shareAlikeRequired")),
+        }
+    return LICENCES
+
+
+def licence_use(loc):
+    """'fit' (show and fit), 'show' (show as published only) or None (do not use)."""
+    lics = [LICENCES.get(x.get("id")) or {"name": x.get("name") or "", "unknown": True}
+            for x in (loc.get("licenses") or [])]
+    if not lics:
+        return None
+    use = "fit"
+    for lic in lics:
+        name = (lic.get("name") or "").lower()
+        if lic.get("unknown") or not any(k in name for k in REVIEWED):
+            return None
+        if not lic.get("commercial", True):
+            return None
+        if not lic.get("modify", True) or lic.get("share_alike"):
+            use = "show"
+    if no_deriv(_provider(loc)):
+        use = "show"
+    return use
+
+
+def _licence_text(loc):
+    names = sorted({(x.get("name") or "").strip() for x in (loc.get("licenses") or []) if x.get("name")})
+    return ", ".join(names)
+
+
+def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRESH_H, pause=1.1, tries=3,
+                   monitors_only=False):
     """Best nearby station with a PM2.5 reading no older than max_age_h.
 
     Order: reference monitors before low-cost sensors, a reading within fresh_h
@@ -64,6 +114,10 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRE
             ages.append(age)
         if age is None or age > max_age_h:
             continue
+        use = licence_use(loc)
+        if use is None or (monitors_only and not loc.get("isMonitor")):
+            continue
+        loc["_use"] = use
         c = loc.get("coordinates") or {}
         d = haversine_km(lat, lon, c.get("latitude", lat), c.get("longitude", lon))
         cands.append(((0 if loc.get("isMonitor") else 1, 0 if age <= fresh_h else 1, d), d, loc, sensors))
@@ -79,9 +133,9 @@ def openaq_nearest(lat, lon, key, radius_m=25000, max_age_h=CALIB_H, fresh_h=FRE
         pick = _reading(lj, loc, sensors, d, now, max_age_h, fresh_h)
         if pick:
             break
-    if pick and no_deriv(pick.get("provider")):
+    if pick and not pick.get("fit_ok"):
         # Shown as published; the model is fitted to another open station nearby, if any.
-        others = [x for x in cands if not no_deriv(_provider(x[2]))]
+        others = [x for x in cands if x[2].get("_use") == "fit"]
         LAST_DEBUG["open_candidates"] = len(others)
         for _, d, loc, sensors in others[:2]:
             time.sleep(pause)
@@ -123,6 +177,7 @@ def _reading(lj, loc, sensors, d, now, max_age_h, fresh_h):
     limit = fresh_h if a25 <= fresh_h else max_age_h
     out = {"src": "station", "station": loc.get("name"), "dist_km": round(d, 1),
            "provider": (loc.get("provider") or {}).get("name"), "monitor": bool(loc.get("isMonitor")),
+           "licence": _licence_text(loc), "fit_ok": loc.get("_use") == "fit",
            "at": t25, "age_h": round(max(a25, 0.0), 2)}
     for name, (v, _, age) in vals.items():
         if age <= limit:
@@ -270,15 +325,20 @@ def jma_weather(office, temp_area, amedas):
 
 
 # ---------------------------------------------------------------- USGS
+KOREA_BOX = (32.5, 43.5, 123.5, 132.0)  # lat min, lat max, lon min, lon max
+
+
 def usgs_quakes():
     j = get_json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson")
     out = []
     for feat in j.get("features", []):
         p = feat.get("properties") or {}
         c = (feat.get("geometry") or {}).get("coordinates") or [None, None, None]
-        if p.get("time") is None:
+        if p.get("time") is None or c[1] is None or c[0] is None:
             continue
-        out.append({"mag": p.get("mag"), "place": p.get("place"),
+        if KOREA_BOX[0] <= c[1] <= KOREA_BOX[1] and KOREA_BOX[2] <= c[0] <= KOREA_BOX[3]:
+            continue  # 지진관측법 §16: only KMA announces quakes in and around Korea
+        out.append({"mag": p.get("mag"), "place": p.get("place"), "status": p.get("status"),
                     "t": iso(dt.datetime.fromtimestamp(p["time"] / 1000, dt.timezone.utc)),
                     "lat": c[1], "lon": c[0], "depth_km": c[2]})
     return sorted(out, key=lambda q: q["t"], reverse=True)
