@@ -1,7 +1,9 @@
 name: hourly
 on:
   schedule:
-    - cron: "17 * * * *"
+    # GitHub drops most scheduled runs: an hourly cron ran only 4-5 times a day (Nov 6-9).
+    # Ask six times an hour; the check job lets a build through only when the last one is 45+ minutes old.
+    - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -18,7 +20,30 @@ concurrency:
   group: hourly
   cancel-in-progress: false
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      run: ${{ steps.age.outputs.run }}
+    steps:
+      - id: age
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = "schedule" ]; then
+            gen=$(curl -fsS --max-time 20 https://ditailgptwork.github.io/honest-air-data/v1/status.json \
+                  | python3 -c "import json,sys; print(json.load(sys.stdin)['generated'])" || true)
+            if [ -n "$gen" ]; then
+              age=$(( $(date -u +%s) - $(date -u -d "$gen" +%s) ))
+              echo "last build $gen, ${age}s ago"
+              if [ "$age" -lt 2700 ]; then run=false; fi
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
   build:
+    needs: check
+    if: needs.check.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     environment:
