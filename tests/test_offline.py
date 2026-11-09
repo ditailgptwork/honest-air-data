@@ -165,4 +165,50 @@ c1, upd = cams.refresh(one, late, workdir=tmp, log=lambda *a: None)
 assert not upd and calls == []
 c2, upd = cams.refresh(one + [{"id": "seoul", "lat": 37.57, "lon": 126.98}], late, workdir=tmp, log=lambda *a: None)
 assert upd and calls == [iso(base)] and "seoul" in c2["cities"] and c2["base"] == iso(base), (calls, c2.get("base"))
+# Ledger: one snapshot per local 6-hour slot; errors only from later readings of the same station.
+from pipeline import ledger  # noqa: E402
+
+led = {}
+city = {"id": "x", "tz": "Asia/Seoul"}
+mdl = {"t0": iso(base + 10 * H), "pm25": [20.0] * 24, "pm10": [40.0] * 24,
+       "fit_f": {"pm25": 0.3}, "steady_f": {"pm25": 0.5}}
+src = {"at": iso(base + 9 * H), "station": "s", "pm25": 21.0, "pm10": 40.0}
+t_run = base + 10 * H + dt.timedelta(minutes=5)  # 07:05 KST
+assert ledger.slot(t_run, "Asia/Seoul") == "2026-11-04/1"
+assert ledger.snapshot(led, city, mdl, src, iso(base), t_run)
+assert not ledger.snapshot(led, city, mdl, src, iso(base), t_run + H)  # same slot: written once
+r = led["x"][0]
+assert r["t0"] == ledger._hours(base + 10 * H) and r["to"] == ledger._hours(base + 9 * H) and r["lag"] == 1.0
+assert r["b"] == ledger._hours(base) and len(r["e25"]) == 24 and r["st"] == "s"
+later = {"at": iso(base + 13 * H), "station": "s", "pm25": 30.0, "pm10": 40.0}
+assert ledger.verify(led, "x", later, t_run + 3 * H) == 2
+assert r["e25"][3] == round(100 * math.log(30 / 20)) and r["e10"][3] == 0
+assert ledger.verify(led, "x", later, t_run + 3 * H) == 0                       # filled once
+assert ledger.verify(led, "x", dict(later, station="other"), t_run + 3 * H) == 0  # another station
+assert ledger.verify(led, "x", src, t_run) == 0                                 # the fitted reading is no test
+assert ledger.verify(led, "x", dict(later, at=iso(base + 40 * H)), t_run) == 0  # beyond 24 h
+assert ledger.snapshot(led, city, mdl, src, iso(base), t_run + 6 * H) and len(led["x"]) == 2
+st = ledger.stats(led, "site")
+assert st == {"from": "site", "cities": 1, "snapshots": 2, "errors_pm25": 1}, st
+assert ledger.prune(led, t_run + dt.timedelta(days=ledger.KEEP_D + 2)) == {}
+# Loading: a missing file starts a new ledger; an unreadable site falls back to the cached copy.
+import json as _json  # noqa: E402
+import tempfile  # noqa: E402
+
+def _fail(msg):
+    def f(*a, **k):
+        raise RuntimeError(msg)
+    return f
+
+real = ledger.get_json
+ledger.get_json = _fail("HTTP 404: not found")
+assert ledger.load(fallback=Path("does-not-exist.json")) == ({}, "new")
+with tempfile.TemporaryDirectory() as d:
+    fb = Path(d) / "ledger.json"
+    fb.write_text(_json.dumps(ledger.payload({"x": [{"t0": 1}]}, base)), encoding="utf-8")
+    ledger.get_json = _fail("timed out")
+    assert ledger.load(fallback=fb) == ({"x": [{"t0": 1}]}, "cache")
+    assert ledger.load(fallback=Path(d) / "none.json") == ({}, "lost")
+ledger.get_json = real
+
 print("offline tests ok")

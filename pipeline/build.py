@@ -3,6 +3,7 @@
 site/v1/index.json       cities and countries
 site/v1/c/{CC}.json      everything for the cities of one country
 site/v1/quakes.json      M4.5+ earthquakes, last 24 h
+site/v1/ledger.json      corrected forecasts and their verified errors (shadow mode, not read by the app)
 site/v1/status.json      what worked in this run (no keys, no personal data)
 
 The app downloads one country file and picks the nearest city on the phone,
@@ -15,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import bias, cams, sources
+from . import bias, cams, ledger, sources
 from .common import clean, haversine_km, iso, parse_iso, utcnow
 
 SITE = Path("site/v1")
@@ -147,6 +148,9 @@ def main():
     errors, notes = [], []
     cache, cams_updated = cams.refresh(cities, now, log=print)
     hist = bias.load()
+    led, led_from = ledger.load()
+    if led_from == "lost":
+        errors.append("ledger: the published file and the cached copy were both unreadable; a new one starts")
     if os.environ.get("OPENAQ_API_KEY"):
         try:
             sources.load_licences(os.environ["OPENAQ_API_KEY"])
@@ -164,6 +168,8 @@ def main():
         if limits:
             rec["limits"] = limits
         model = cams.series_from(cache, c["id"], now)
+        if model and pol.get("uv") is False:
+            model.pop("uv", None)  # no own UV outlook here (policy.json)
         obs = None
         if oa_key:
             try:
@@ -190,6 +196,12 @@ def main():
                     fit_model(model, src, ratios, bias.steady(hist, c["id"], now))
                     model["fit_by"] = {k: src.get(k) for k in ("station", "provider", "dist_km")}
                     donors.append((c, model))
+                    if "forecast" not in limits:
+                        try:
+                            ledger.verify(led, c["id"], src, now)
+                            ledger.snapshot(led, c, model, src, (cache or {}).get("base"), now)
+                        except Exception as e:  # noqa: BLE001
+                            notes.append(f"ledger {c['id']}: {clean(e)[:120]}")
             else:
                 pending.append((c, model))
         if "forecast" in limits:
@@ -199,7 +211,7 @@ def main():
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
         wx = None
         try:
-            if "weather" in limits:
+            if "weather" in limits or (pol.get("wx_only") and c["wx"] != pol["wx_only"]):
                 raise LookupError("skip")
             if c["wx"] == "kma" and kr_key and down.get("kma", 0) < 2:
                 wx = sources.kma_weather(c["lat"], c["lon"], kr_key)
@@ -213,8 +225,9 @@ def main():
             # Two failures in a row: the service is down for this run, so the other
             # cities go straight to MET Norway instead of waiting on timeouts.
             down[c["wx"]] = down.get(c["wx"], 0) + 1
-            notes.append(f"wx {c['id']} {c['wx']} failed, MET Norway instead: {clean(e)[:120]}")
-        if wx is None and "weather" not in limits:
+            alt = "" if pol.get("wx_only") else ", MET Norway instead"
+            notes.append(f"wx {c['id']} {c['wx']} failed{alt}: {clean(e)[:120]}")
+        if wx is None and "weather" not in limits and not pol.get("wx_only"):
             try:
                 wx = sources.metno_weather(c["lat"], c["lon"])
                 time.sleep(0.2)
@@ -222,7 +235,10 @@ def main():
                 errors.append(f"wx {c['id']}: {clean(e)}")
         if wx is not None:
             uv = (model or {}).get("uv") or []
-            wx["uvmax"] = max(uv) if uv else (None if "forecast" in limits else wx.get("uvmax_clear"))
+            if pol.get("uv") is False:
+                wx["uvmax"] = None
+            else:
+                wx["uvmax"] = max(uv) if uv else (None if "forecast" in limits else wx.get("uvmax_clear"))
         rec.update(air=air, model=model, wx=wx)
         by_cc.setdefault(c["cc"], []).append(rec)
 
@@ -267,6 +283,12 @@ def main():
     write(SITE / "bias.json", {"v": bias.VERSION, "generated": iso(now), "keep_h": bias.KEEP_H,
                                "cities": bias.prune(hist, now)})
     try:
+        book = ledger.payload(ledger.prune(led, now), now)
+        write(SITE / "ledger.json", book)
+        write(Path("cache") / "ledger.json", book)  # travels in the Actions cache as a second copy
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"ledger: {clean(e)}")
+    try:
         write(SITE / "quakes.json", {"v": 1, "generated": iso(now), "attr": [ATTR["usgs"]],
                                      "quakes": sources.usgs_quakes()[:60]})
     except Exception as e:  # noqa: BLE001
@@ -282,7 +304,8 @@ def main():
                                                      sorted(sources.HELD.items(), key=lambda kv: -kv[1])[:8]))
     write(SITE / "status.json", {"v": 1, "generated": iso(now), "cams_base": (cache or {}).get("base"),
                                  "cities": len(cities), "air": ok_air, "station": n_station, "fit": n_fit,
-                                 "weather": ok_wx, "fit_f": fits, "errors": errors[:40], "notes": notes[:60]})
+                                 "weather": ok_wx, "fit_f": fits, "ledger": ledger.stats(led, led_from),
+                                 "errors": errors[:40], "notes": notes[:60]})
     summary = (f"cities {len(cities)} | air {ok_air} (station {n_station}, fit {n_fit}) | weather {ok_wx} | "
                f"CAMS {(cache or {}).get('base')} | errors {len(errors)} | notes {len(notes)}")
     print(summary)
