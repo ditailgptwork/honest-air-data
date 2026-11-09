@@ -27,4 +27,6 @@ Licence and country rules (pre-launch review, 2026-11-04):
 - `policy.json` turns off forecasts, weather or earthquakes per country where a local licence is needed (Japan, Taiwan, Vietnam, Indonesia, Kenya) and limits Türkiye to government monitors. Earthquakes in and around Korea are left out (지진관측법 §16).
 - Korea (review 2026-11-09): the PM outlook stays (미세먼지 is not a 기상현상 in 기상법; 대기환경보전법 does not bar private PM outlooks), but weather comes only from KMA as issued (`wx_only`, no MET Norway fallback) and there is no own UV outlook (`uv: false`).
 
+Schedule: GitHub runs scheduled workflows on a best-effort basis and dropped most hourly runs here (Nov 2026). The workflow asks six times an hour and its check job builds only when the last build is 45+ minutes old (`workflow_dispatch` with `force: true` overrides). A second clock, `tools/trigger-worker.js`, can run on Cloudflare Workers' free cron triggers and ask through `workflow_dispatch`.
+
 Keys live in GitHub Actions secrets and are never written to this repository or to the published files.

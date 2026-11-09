@@ -3,8 +3,14 @@ on:
   schedule:
     # GitHub drops most scheduled runs: an hourly cron ran only 4-5 times a day (Nov 6-9).
     # Ask six times an hour; the check job lets a build through only when the last one is 45+ minutes old.
+    # tools/trigger-worker.js (Cloudflare Workers cron) can ask too, through workflow_dispatch.
     - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even when the last build is less than 45 minutes old"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -29,9 +35,10 @@ jobs:
       - id: age
         env:
           EVENT: ${{ github.event_name }}
+          FORCE: ${{ inputs.force }}
         run: |
           run=true
-          if [ "$EVENT" = "schedule" ]; then
+          if [ "$EVENT" != "push" ] && [ "$FORCE" != "true" ]; then
             gen=$(curl -fsS --max-time 20 https://ditailgptwork.github.io/honest-air-data/v1/status.json \
                   | python3 -c "import json,sys; print(json.load(sys.stdin)['generated'])" || true)
             if [ -n "$gen" ]; then
