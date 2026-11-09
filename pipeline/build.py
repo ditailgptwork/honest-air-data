@@ -182,8 +182,11 @@ def main():
         calib = obs.pop("calib", None) if obs else None
         if model and obs:
             # The model is fitted to the shown reading, or, when that one may not be
-            # changed (AirKorea), to another open station nearby.
-            src = obs if obs.get("fit_ok", True) else calib
+            # changed (AirKorea), to another open station nearby, unless policy.json says
+            # the open sensors of that country read too far from its official monitors
+            # (calib_fit: false); then the outlook stays the raw model.
+            calib_ok = pol.get("calib_fit", True)
+            src = obs if obs.get("fit_ok", True) else (calib if calib_ok else None)
             if src:
                 ratios = ratios_at_reading(model, src, cache, c["id"])
                 if suspect(src, ratios):
@@ -202,7 +205,7 @@ def main():
                             ledger.snapshot(led, c, model, src, (cache or {}).get("base"), now)
                         except Exception as e:  # noqa: BLE001
                             notes.append(f"ledger {c['id']}: {clean(e)[:120]}")
-            else:
+            elif calib_ok:
                 pending.append((c, model))
         if "forecast" in limits:
             model = None  # forecasts need a local licence here (policy.json); show readings only

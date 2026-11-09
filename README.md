@@ -18,7 +18,7 @@ Data sources and attribution:
 - MET Norway Locationforecast (api.met.no), CC BY 4.0.
 - 기상청 단기예보 조회서비스 (공공누리 제1유형). Official forecasts are relayed as issued.
 - 出典：気象庁ホームページ. Official forecasts are relayed as issued.
-- 한국환경공단 에어코리아 (공공누리 제3유형: 출처표시·변경금지). Values are shown exactly as published and are never used to fit the model or kept in `bias.json`; the forecast for Korean cities is fitted to other open stations nearby, or takes the steady ratio of the nearest such city within 200 km, or stays the raw CAMS model.
+- 한국환경공단 에어코리아 (공공누리 제3유형: 출처표시·변경금지). Values are shown exactly as published and are never used to fit the model or kept in `bias.json`; the forecast for Korean cities stays the raw CAMS model (`calib_fit: false`): the open low-cost sensors nearby read too far from the official monitors (Nov 2026 check over 28 cities: mean |ln| error against AirKorea 0.51 after fitting to them, 0.31 for the raw model).
 - U.S. Geological Survey earthquake feeds.
 
 Licence and country rules (pre-launch review, 2026-11-04):

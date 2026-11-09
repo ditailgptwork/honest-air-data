@@ -1,11 +1,11 @@
 {
-  "_why": "Country rules from the pre-launch legal review (2026-11-04). forecast:false = no model forecast, no UV forecast, no 'best hours' (a local forecasting licence is required); weather:false = no weather at all; quakes:false = no earthquake list; monitors_only = only government reference monitors are shown; uv:false = no own UV outlook; wx_only = weather only from this service, no fallback.",
+  "_why": "Country rules from the pre-launch legal review (2026-11-04). forecast:false = no model forecast, no UV forecast, no 'best hours' (a local forecasting licence is required); weather:false = no weather at all; quakes:false = no earthquake list; monitors_only = only government reference monitors are shown; uv:false = no own UV outlook; wx_only = weather only from this service, no fallback; calib_fit:false = when the shown reading may not be used for fitting (AirKorea), the model is not fitted to other open sensors nor given their ratio, so the outlook stays the raw model.",
   "JP": {"forecast": false, "note": "気象業務法 17条 予報業務許可; JMA forecasts are relayed as issued"},
   "TW": {"forecast": false, "weather": false, "note": "氣象法: forecasts need a CWA permit"},
   "VN": {"forecast": false, "weather": false, "note": "Law on Hydro-Meteorology: forecasting needs a licence"},
   "ID": {"forecast": false, "weather": false, "quakes": false, "note": "UU 31/2009 §36: public MKG information services are BMKG's"},
   "SA": {"forecast": false, "weather": false, "note": "Meteorology law §3: NCM licence for any weather publication"},
   "KE": {"forecast": false, "weather": false, "note": "Meteorology Act 2026 not yet checked"},
-  "KR": {"quakes": false, "uv": false, "wx_only": "kma", "note": "지진관측법 §16: only KMA announces quake observations; 기상법 §17: weather only as KMA issues it (no other source, no own UV outlook); PM outlooks stay (2026-11-09 review)"},
+  "KR": {"quakes": false, "uv": false, "wx_only": "kma", "calib_fit": false, "note": "지진관측법 §16: only KMA announces quake observations; 기상법 §17: weather only as KMA issues it (no other source, no own UV outlook); PM outlooks stay (2026-11-09 review); calib_fit:false (2026-11-09): the open low-cost sensors here read far from the official monitors (28 cities, mean |ln| error vs AirKorea 0.51 after fitting, 0.31 raw), so the PM outlook stays the raw CAMS model"},
   "TR": {"monitors_only": true, "note": "MGM law §27: private station readings need MGM permission"}
 }
