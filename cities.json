@@ -478,15 +478,6 @@
   "wx": "metno"
  },
  {
-  "id": "riyadh",
-  "name": "Riyadh",
-  "lat": 24.71,
-  "lon": 46.68,
-  "cc": "SA",
-  "tz": "Asia/Riyadh",
-  "wx": "metno"
- },
- {
   "id": "cairo",
   "name": "Cairo",
   "lat": 30.04,
