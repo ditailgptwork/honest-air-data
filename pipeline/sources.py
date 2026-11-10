@@ -3,11 +3,14 @@
 - OpenAQ v3: nearest fresh ground station (PM2.5, PM10, O3, NO2).
 - MET Norway Locationforecast: weather outside Korea and Japan (CC BY 4.0).
 - KMA short-range forecast: weather in Korea (official forecasts are relayed as issued).
+- AirKorea real-time readings: the latest hour and its 1-hour grades for every Korean station, as published.
 - JMA forecast + AMeDAS: weather in Japan (official forecasts are relayed as issued).
 - USGS: M4.5+ earthquakes in the last 24 hours.
 """
 import datetime as dt
+import json
 import math
+import re
 import time
 import unicodedata
 
@@ -364,3 +367,79 @@ def usgs_quakes():
                     "t": iso(dt.datetime.fromtimestamp(p["time"] / 1000, dt.timezone.utc)),
                     "lat": c[1], "lon": c[0], "depth_km": c[2]})
     return sorted(out, key=lambda q: q["t"], reverse=True)
+
+
+# ---------------------------------------------------------------- AirKorea (Korea)
+# 한국환경공단_에어코리아_대기오염정보 (data.go.kr 15073861, 공공누리 제3유형: 출처표시·변경금지).
+# One call per run returns the latest hour of every station in the country (sidoName=전국); a development
+# account allows 500 calls a day. ver=1.3 adds the 1-hour grades (pm25Grade1h, pm10Grade1h).
+AIRKOREA = "https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
+AK_GRADES = ("1", "2", "3", "4")  # 좋음, 보통, 나쁨, 매우나쁨
+KST = dt.timezone(dt.timedelta(hours=9))
+
+
+def airkorea_time(s):
+    """'2026-11-10 20:00' in KST (midnight may be written 24:00) -> UTC ISO."""
+    day, hm = s.strip().split()
+    h, m = (int(x) for x in hm.split(":"))
+    return iso(dt.datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=KST) + dt.timedelta(hours=h, minutes=m))
+
+
+def _ak_num(v):
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None  # "-" while a monitor is checked or offline
+    return x if x >= 0 else None
+
+
+def _ak_error(text):
+    """data.go.kr answers key problems in XML even when JSON was asked for."""
+    for tag in ("returnAuthMsg", "resultMsg", "errMsg"):  # the most telling first
+        m = re.search(rf"<{tag}>([^<]+)<", text)
+        if m:
+            return m.group(1).strip()
+    return " ".join(text.split())[:120]
+
+
+def airkorea_now(key, tries=2):
+    """stationName -> the latest published hour: at, pm25, pm10, o3, no2 (ug/m3) and the 1-hour grades."""
+    params = {"serviceKey": key, "returnType": "json", "numOfRows": 1000, "pageNo": 1,
+              "sidoName": "전국", "ver": "1.3"}
+    last = None
+    for attempt in range(tries):
+        try:
+            text = get_text(AIRKOREA, params, timeout=KMA_TIMEOUT)
+            break
+        except Exception as e:  # noqa: BLE001
+            last = e
+            time.sleep(2.0 * (attempt + 1))
+    else:
+        raise RuntimeError(f"AirKorea: {last}")
+    try:
+        j = json.loads(text)
+    except ValueError:
+        raise RuntimeError(f"AirKorea: {_ak_error(text)}") from None
+    resp = j.get("response") or {}
+    head = resp.get("header") or {}
+    if str(head.get("resultCode", "00")) != "00":
+        raise RuntimeError(f"AirKorea {head.get('resultCode')} {head.get('resultMsg')}")
+    out = {}
+    for it in (resp.get("body") or {}).get("items") or []:
+        name = (it.get("stationName") or "").strip()
+        try:
+            at = airkorea_time(it.get("dataTime") or "")
+        except (ValueError, AttributeError):
+            continue
+        if not name:
+            continue
+        row = {"at": at, "pm25": _ak_num(it.get("pm25Value")), "pm10": _ak_num(it.get("pm10Value"))}
+        for k in ("o3", "no2"):
+            v = _ak_num(it.get(f"{k}Value"))
+            row[k] = round(v * UG_PER_PPM[k], 1) if v is not None else None
+        grade = {k: int(g) for k, g in (("pm25", str(it.get("pm25Grade1h") or "").strip()),
+                                        ("pm10", str(it.get("pm10Grade1h") or "").strip())) if g in AK_GRADES}
+        if grade:
+            row["grade"] = grade
+        out[name] = row
+    return out

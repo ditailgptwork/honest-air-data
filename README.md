@@ -5,7 +5,7 @@ Hourly open-data pipeline for the Honest Air app (Ditail Labs). It turns public 
 Files (published every hour):
 
 - `v1/index.json`: cities and countries
-- `v1/c/{CC}.json`: air, 24 h model forecast, weather. Air is a ground station read within 3 h (`src: station`); otherwise the CAMS model at this hour, fitted to a station read within 6 h when there is one (`src: fit`, the reading in `ref`), or the raw model (`src: model`). Reference monitors come before low-cost sensors, and a low-cost reading more than 5 times off the model is set aside as a likely fault. The forecast is scaled by the reading's ratio to the model, moving over about 12 h toward the city's steady ratio (median of the last 48 h).
+- `v1/c/{CC}.json`: air, 30 h model forecast (the app shows the 24 h from the hour it is opened, so a late run still fills the day), weather. Air is a ground station read within 3 h (`src: station`); otherwise the CAMS model at this hour, fitted to a station read within 6 h when there is one (`src: fit`, the reading in `ref`), or the raw model (`src: model`). Reference monitors come before low-cost sensors, and a low-cost reading more than 5 times off the model is set aside as a likely fault. The forecast is scaled by the reading's ratio to the model, moving over about 12 h toward the city's steady ratio (median of the last 48 h).
 - `v1/bias.json`: station / model ratios per city for the last 72 h, carried from run to run
 - `v1/ledger.json`: forecast ledger for honest probabilities (shadow mode, the app does not read it). Four times a local day the corrected PM forecast of each city fitted to a station of its own is written down, and later runs fill in 100 × ln(reading / forecast) for every hour the same station reports. Kept 60 days; a copy travels in the Actions cache so a failed read never publishes an empty ledger. Countries with `forecast: false` are never written down.
 - `v1/quakes.json`: M4.5+ earthquakes in the last 24 h
@@ -18,7 +18,7 @@ Data sources and attribution:
 - MET Norway Locationforecast (api.met.no), CC BY 4.0.
 - 기상청 단기예보 조회서비스 (공공누리 제1유형). Official forecasts are relayed as issued.
 - 出典：気象庁ホームページ. Official forecasts are relayed as issued.
-- 한국환경공단 에어코리아 (공공누리 제3유형: 출처표시·변경금지). Values are shown exactly as published and are never used to fit the model or kept in `bias.json`; the forecast for Korean cities stays the raw CAMS model (`calib_fit: false`): the open low-cost sensors nearby read too far from the official monitors (Nov 2026 check over 28 cities: mean |ln| error against AirKorea 0.51 after fitting to them, 0.31 for the raw model).
+- 한국환경공단 에어코리아 (공공누리 제3유형: 출처표시·변경금지). The latest hour of the station shown comes straight from AirKorea's real-time API (data.go.kr 15073861, one call per run for the whole country) when it is at least as new as the OpenAQ copy, with its 1-hour grades as published (`air.kr`: 1 좋음, 2 보통, 3 나쁨, 4 매우나쁨). Values are shown exactly as published and are never used to fit the model or kept in `bias.json`; the forecast for Korean cities stays the raw CAMS model (`calib_fit: false`): the open low-cost sensors nearby read too far from the official monitors (Nov 2026 check over 28 cities: mean |ln| error against AirKorea 0.51 after fitting to them, 0.31 for the raw model).
 - U.S. Geological Survey earthquake feeds.
 
 Licence and country rules (pre-launch review, 2026-11-04):

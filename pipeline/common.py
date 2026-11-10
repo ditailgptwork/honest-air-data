@@ -6,7 +6,9 @@ slips into an error message before it reaches logs or output files.
 import datetime as dt
 import math
 import os
+import re
 import time
+from urllib.parse import quote, quote_plus
 
 import requests
 
@@ -29,12 +31,19 @@ def parse_iso(s):
     return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
+# requests puts the whole URL in some errors ("Max retries exceeded with url: ...?serviceKey=..."), where a
+# data.go.kr key appears percent-encoded, so the plain replace alone would miss it.
+_KEY_PARAM = re.compile(r"(?i)((?:service_?key|api_?key|access_?token|token|key)=)[^&\s'\"]+")
+
+
 def clean(text):
     text = str(text)
     for name in SECRET_ENV:
         value = os.environ.get(name, "")
         if value and len(value) > 4:
-            text = text.replace(value, "***")
+            for v in sorted({value, quote(value, safe=""), quote(value), quote_plus(value)}, key=len, reverse=True):
+                text = text.replace(v, "***")
+    text = _KEY_PARAM.sub(r"\1***", text)
     return " ".join(text.split())[:300]
 
 

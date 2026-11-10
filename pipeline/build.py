@@ -94,6 +94,22 @@ def suspect(obs, ratios):
     return (v < 3 and r < 0.25) or r < 0.05 or r > 8
 
 
+def official(air, row, now):
+    """AirKorea's own latest hour for the station shown. A newer hour replaces the OpenAQ copy of it, and the
+    1-hour grades go out as published (air["kr"]), only for the hour on screen. True when grades were added."""
+    if not air or not row or not row.get("at"):
+        return False
+    at = air.get("at") or ""
+    if row["at"] >= at and row.get("pm25") is not None and row.get("pm10") is not None:
+        air.update({k: row.get(k) for k in ("pm25", "pm10", "o3", "no2")})
+        if row["at"] > at:
+            air.update(at=row["at"], age_h=round((now - parse_iso(row["at"])).total_seconds() / 3600, 2))
+    if row["at"] == air.get("at") and row.get("grade"):
+        air["kr"] = dict(row["grade"])
+        return True
+    return False
+
+
 def choose_air(model, obs, fresh_h=sources.FRESH_H):
     """What the app shows as the air now.
 
@@ -160,6 +176,14 @@ def main():
     donors, pending = [], []  # (city, model) fitted to an open station / waiting to borrow a fit
     oa_key = os.environ.get("OPENAQ_API_KEY")
     kr_key = os.environ.get("DATA_GO_KR_KEY")
+    ak = {}
+    if kr_key and any(c["cc"] == "KR" for c in cities):
+        try:
+            ak = sources.airkorea_now(kr_key)
+            notes.append(f"airkorea: {len(ak)} stations, {sum(1 for v in ak.values() if 'grade' in v)} with 1-hour grades")
+        except Exception as e:  # noqa: BLE001
+            notes.append(f"airkorea: {clean(e)[:160]} (OpenAQ copy only, no grades this run)")
+    n_kr = 0
     by_cc = {}
     for c in cities:
         rec = {k: c[k] for k in ("id", "name", "lat", "lon", "cc", "tz")}
@@ -167,7 +191,7 @@ def main():
         limits = [k for k in ("forecast", "weather", "quakes") if pol.get(k) is False]
         if limits:
             rec["limits"] = limits
-        model = cams.series_from(cache, c["id"], now)
+        model = cams.series_from(cache, c["id"], now, hours=30)  # 30 h: the app shows 24 from the hour it opens
         if model and pol.get("uv") is False:
             model.pop("uv", None)  # no own UV outlook here (policy.json)
         obs = None
@@ -210,6 +234,8 @@ def main():
         if "forecast" in limits:
             model = None  # forecasts need a local licence here (policy.json); show readings only
         air = choose_air(model, obs)
+        if ak and air and air.get("src") == "station" and is_airkorea(air.get("provider")):
+            n_kr += official(air, ak.get(air.get("station")), now)
         if air and air.get("src") == "fit":
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
         wx = None
@@ -246,6 +272,8 @@ def main():
         by_cc.setdefault(c["cc"], []).append(rec)
 
     borrow_fits(pending, donors, notes)
+    if ak:
+        notes.append(f"airkorea grades on {n_kr} Korean cities")
     ok_air = sum(1 for recs in by_cc.values() for r in recs if r["air"])
     ok_wx = sum(1 for recs in by_cc.values() for r in recs if r["wx"])
     if ok_air == 0 and ok_wx == 0:

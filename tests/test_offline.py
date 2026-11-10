@@ -211,4 +211,43 @@ with tempfile.TemporaryDirectory() as d:
     assert ledger.load(fallback=Path(d) / "none.json") == ({}, "lost")
 ledger.get_json = real
 
+# AirKorea: KST hours (24:00 = next day), grades only for the hour shown, a newer hour replaces the OpenAQ copy.
+from pipeline.common import clean, parse_iso  # noqa: E402
+
+assert sources.airkorea_time("2026-11-10 20:00") == "2026-11-10T11:00:00Z"
+assert sources.airkorea_time("2026-11-10 24:00") == "2026-11-10T15:00:00Z"
+items = [{"stationName": "중구", "dataTime": "2026-11-10 20:00", "pm25Value": "18", "pm10Value": "24",
+          "o3Value": "0.021", "no2Value": "-", "pm25Grade1h": "2", "pm10Grade1h": "1"},
+         {"stationName": "점검", "dataTime": "2026-11-10 20:00", "pm25Value": "-", "pm10Value": "-", "pm25Grade1h": None},
+         {"stationName": "", "dataTime": "2026-11-10 20:00"}, {"stationName": "x", "dataTime": None}]
+sources.get_text = lambda url, params=None, **kw: _json.dumps(
+    {"response": {"header": {"resultCode": "00"}, "body": {"items": items}}})
+akr = sources.airkorea_now("k", tries=1)
+assert set(akr) == {"중구", "점검"}, akr
+assert akr["중구"]["grade"] == {"pm25": 2, "pm10": 1} and akr["중구"]["o3"] == 41.2 and akr["중구"]["no2"] is None
+assert "grade" not in akr["점검"] and akr["점검"]["pm25"] is None
+t_ak = parse_iso("2026-11-10T11:30:00Z")
+a1 = {"src": "station", "station": "중구", "at": "2026-11-10T11:00:00Z", "pm25": 17.0, "pm10": 24.0}
+assert build.official(a1, akr["중구"], t_ak) and a1["kr"] == {"pm25": 2, "pm10": 1} and a1["pm25"] == 18.0
+a2 = {"src": "station", "station": "중구", "at": "2026-11-10T10:00:00Z", "pm25": 30.0, "pm10": 40.0, "age_h": 1.5}
+assert build.official(a2, akr["중구"], t_ak) and a2["at"] == "2026-11-10T11:00:00Z" and a2["age_h"] == 0.5
+assert a2["pm25"] == 18.0 and a2["o3"] == 41.2
+a3 = {"src": "station", "station": "중구", "at": "2026-11-10T12:00:00Z", "pm25": 30.0, "pm10": 40.0}
+assert not build.official(a3, akr["중구"], t_ak) and "kr" not in a3 and a3["pm25"] == 30.0  # older: OpenAQ stays
+a4 = {"src": "station", "station": "점검", "at": "2026-11-10T11:00:00Z", "pm25": 9.0, "pm10": 20.0}
+assert not build.official(a4, akr["점검"], t_ak) and a4["pm25"] == 9.0 and "kr" not in a4
+assert not build.official(a4, None, t_ak)
+sources.get_text = lambda url, params=None, **kw: ("<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg>"
+    "<returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>")
+try:
+    sources.airkorea_now("k", tries=1)
+    raise AssertionError("no error")
+except RuntimeError as e:
+    assert "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" in str(e), e
+# Keys never reach notes, even percent-encoded inside a URL.
+os.environ["DATA_GO_KR_KEY"] = "abc+def/ghi=="
+msg = clean("Max retries exceeded with url: /x?serviceKey=abc%2Bdef%2Fghi%3D%3D&pageNo=1 (abc+def/ghi==)")
+assert "abc" not in msg and "pageNo=1" in msg, msg
+assert "SERVICE_KEY" in clean("SERVICE_KEY_IS_NOT_REGISTERED_ERROR")
+
 print("offline tests ok")
