@@ -1,0 +1,45 @@
+name: clock
+# The clock for the hourly build. GitHub's own schedule drops most runs of this repository (Nov 2026: the hourly
+# workflow ran 3-4 times a day, so the app showed readings 4 h old on average). Each clock run first waits on the
+# "clock" environment, whose protection rule is a 55-minute wait timer (Settings > Environments > clock): no runner
+# is held while it waits. Then it asks the hourly build to run (that one skips itself when the last build is under
+# 45 minutes old) and winds itself again with the built-in token, so no personal token is stored anywhere.
+# One clock at a time: the concurrency group keeps at most one run going and one pending, and a newer pending run
+# replaces an older one. The schedule restarts the clock if a run ever fails to wind it.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 */6 * * *"
+permissions:
+  actions: write
+concurrency:
+  group: clock
+  cancel-in-progress: false
+jobs:
+  wait:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: clock
+    steps:
+      - run: echo "the wait timer has passed"
+  tick:
+    needs: wait
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Ask the hourly build
+        run: gh workflow run hourly.yml --repo "$REPO" --ref main
+      - name: Wind the clock again (not when the wait timer is missing, which would loop)
+        run: |
+          created=$(gh api "repos/$REPO/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          age=$(( $(date -u +%s) - $(date -u -d "$created" +%s) ))
+          echo "this clock run started ${age}s ago"
+          if [ "$age" -lt 2400 ] && [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "::warning::the clock environment did not wait 55 minutes; not winding again (the schedule restarts it)"
+            exit 0
+          fi
+          gh workflow run clock.yml --repo "$REPO" --ref main

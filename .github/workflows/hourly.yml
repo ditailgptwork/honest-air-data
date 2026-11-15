@@ -1,9 +1,10 @@
 name: hourly
 on:
   schedule:
-    # GitHub drops most scheduled runs: an hourly cron ran only 4-5 times a day (Nov 6-9).
+    # GitHub drops most scheduled runs: an hourly cron ran only 3-5 times a day (Nov 6-15).
     # Ask six times an hour; the check job lets a build through only when the last one is 45+ minutes old.
-    # tools/trigger-worker.js (Cloudflare Workers cron) can ask too, through workflow_dispatch.
+    # The real clock is clock.yml (a 55-minute environment wait timer, then workflow_dispatch here);
+    # tools/trigger-worker.js (Cloudflare Workers cron) is a second clock that needs a personal token.
     - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
     inputs:

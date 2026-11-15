@@ -11,6 +11,8 @@ Files (published every hour):
 - `v1/quakes.json`: M4.5+ earthquakes in the last 24 h
 - `v1/status.json`: what worked in the last run
 
+When it runs: `.github/workflows/clock.yml` asks for a build about every 56 minutes. It waits on the `clock` environment (a 55-minute wait timer, so no runner is held), dispatches `hourly.yml` and winds itself again with the built-in token; a schedule every 6 hours restarts it if it ever stops. GitHub's own hourly schedule ran only 3-5 times a day (Nov 2026).
+
 Data sources and attribution:
 
 - Generated using Copernicus Atmosphere Monitoring Service information 2026 (CAMS global forecasts, CC-BY).
