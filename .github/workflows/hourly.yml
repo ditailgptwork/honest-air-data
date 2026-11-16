@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 55
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_try.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -65,6 +65,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python tests/test_offline.py
+      - run: python tests/test_cross.py
       - uses: actions/cache/restore@v5
         with:
           path: cache
@@ -86,5 +87,12 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+      # 2026-11-16: 2 of 28 runs since the clock started failed only here, on the Pages side (#71, #83); one retry
+      - id: deploy_try
+        uses: actions/deploy-pages@v5
+        continue-on-error: true
+      - if: steps.deploy_try.outcome == 'failure'
+        run: sleep 60
       - id: deploy
+        if: steps.deploy_try.outcome == 'failure'
         uses: actions/deploy-pages@v5
