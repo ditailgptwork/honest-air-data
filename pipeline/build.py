@@ -128,6 +128,42 @@ def choose_air(model, obs, fresh_h=sources.FRESH_H):
     return obs
 
 
+CROSS_H = 2.0  # 0.6.5: a source is set beside the reading only within this many hours of it
+
+
+def cross_sources(air, cache, city_id, calib, pol, limits):
+    """0.6.5 cross-check: what else says something about the hour on screen, each value as published.
+
+    The reading shown, the raw model (CAMS, never the fitted series) at the reading's hour, and one other open
+    station nearby. Nothing is mixed or voted on here; the app only sets them side by side. The model only where
+    forecasts are allowed (policy.json), another station only within CROSS_H hours of the reading and only if a
+    low-cost one does not look faulty. Fewer than two sources: None."""
+    if not air or air.get("src") != "station" or air.get("pm25") is None or not air.get("at"):
+        return None
+    t = parse_iso(air["at"])
+
+    def ground(o):
+        kind = "monitor" if (o.get("monitor") or is_airkorea(o.get("provider"))) else "sensor"
+        return {"kind": kind, **{k: o[k] for k in ("station", "provider", "dist_km", "pm25", "pm10", "at")
+                                 if o.get(k) is not None}}
+
+    out = [ground(air)]
+    if "forecast" not in limits and cache:
+        m = {k: cams.value_at(cache, city_id, k, t) for k in ("pm25", "pm10")}
+        if m.get("pm25") is not None:
+            out.append({"kind": "model", "station": "CAMS", "provider": "Copernicus (EU)", "at": air["at"],
+                        **{k: round(float(v), 1) for k, v in m.items() if v is not None}})
+    if (calib and calib.get("pm25") is not None and calib.get("at")
+            and not (pol.get("monitors_only") and not calib.get("monitor"))
+            and abs((parse_iso(calib["at"]) - t).total_seconds()) <= CROSS_H * 3600):
+        m25 = cams.value_at(cache, city_id, "pm25", parse_iso(calib["at"])) if cache else None
+        v = calib["pm25"]
+        faulty = suspect(calib, {"pm25": v / m25}) if m25 else (not calib.get("monitor") and (v < 2 or v > 500))
+        if not faulty:
+            out.append(ground(calib))
+    return out if len(out) >= 2 else None
+
+
 def is_airkorea(provider):
     """OpenAQ names AirKorea data 'Korea Air Ministry of Environment' (seen 2026-11-03)."""
     p = (provider or "").lower()
@@ -184,6 +220,7 @@ def main():
         except Exception as e:  # noqa: BLE001
             notes.append(f"airkorea: {clean(e)[:160]} (OpenAQ copy only, no grades this run)")
     n_kr = 0
+    n_cross = {}  # 0.6.5: cities by number of cross-check sources
     by_cc = {}
     for c in cities:
         rec = {k: c[k] for k in ("id", "name", "lat", "lon", "cc", "tz")}
@@ -238,6 +275,10 @@ def main():
             n_kr += official(air, ak.get(air.get("station")), now)
         if air and air.get("src") == "fit":
             notes.append(f"fit only {c['id']}: {obs.get('station')} read {obs.get('age_h')} h ago")
+        cross = cross_sources(air, cache, c["id"], calib, pol, limits)
+        if cross:
+            rec["cross"] = cross
+            n_cross[len(cross)] = n_cross.get(len(cross), 0) + 1
         wx = None
         try:
             if "weather" in limits or (pol.get("wx_only") and c["wx"] != pol["wx_only"]):
@@ -274,6 +315,7 @@ def main():
     borrow_fits(pending, donors, notes)
     if ak:
         notes.append(f"airkorea grades on {n_kr} Korean cities")
+    notes.append("cross-check: " + ", ".join(f"{n} sources in {v} cities" for n, v in sorted(n_cross.items())))
     ok_air = sum(1 for recs in by_cc.values() for r in recs if r["air"])
     ok_wx = sum(1 for recs in by_cc.values() for r in recs if r["wx"])
     if ok_air == 0 and ok_wx == 0:
@@ -290,7 +332,8 @@ def main():
             a = r["air"] or {}
             st = a if a.get("src") == "station" else a.get("ref")
             fb = (r["model"] or {}).get("fit_by") or {}
-            for prov in [(st or {}).get("provider"), fb.get("provider")]:
+            cross_prov = [x.get("provider") for x in (r.get("cross") or []) if x.get("kind") != "model"]
+            for prov in [(st or {}).get("provider"), fb.get("provider")] + cross_prov:
                 if not prov:
                     continue
                 used.add("openaq")
